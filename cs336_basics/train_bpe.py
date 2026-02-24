@@ -76,7 +76,15 @@ def train_bpe(
         for pretoken, pretoken_count in pretoken_counts.items():
             for i in range(len(pretoken) - 1):
                 candidate_pairs[(pretoken[i], pretoken[i + 1])] += pretoken_count
-        max_pair_key = max(candidate_pairs, key=candidate_pairs.get)
+        max_pair_key = ""
+        max_count = float("-inf")
+        for candidate_pair, count in candidate_pairs.items():
+            if count > max_count:
+                max_pair_key = candidate_pair
+                max_count = count
+            elif count == max_count:
+                if candidate_pair > max_pair_key:
+                    max_pair_key = candidate_pair
         merges.append(max_pair_key)
         new_byte = b"".join(max_pair_key)
         vocab[len(vocab)] = new_byte
@@ -112,5 +120,4 @@ def train_bpe(
 
 
 if __name__ == "__main__":
-    # train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 300, special_tokens=["<|endoftext|>"])
-    train_bpe("../data/corpus.en", 500, special_tokens=["<|endoftext|>"])
+    train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 300, special_tokens=["<|endoftext|>"])
