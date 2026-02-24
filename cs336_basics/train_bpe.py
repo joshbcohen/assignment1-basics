@@ -67,13 +67,16 @@ def train_bpe(
             f.seek(start)
             chunk = f.read(end - start).decode("utf-8", errors="ignore")
             split_chunks = re.split("|".join(map(re.escape, special_tokens)), chunk)
+            # TODO:  Parallelize on chunk boundaries with multiprocessing
             for split_chunk in split_chunks:
                 pretokens = re.finditer(PAT, split_chunk)
                 for pretoken in pretokens:
                     pretoken_counts[tuple(bytes([c]) for c in pretoken[0].encode("utf-8"))] += 1
+    # TODO:  Pre-create candidate_pairs dictionary
     while len(vocab) < vocab_size:
         candidate_pairs = defaultdict(int)
         for pretoken, pretoken_count in pretoken_counts.items():
+            # TODO:  Increment/decrement candidate_pairs at token boundaries
             for i in range(len(pretoken) - 1):
                 candidate_pairs[(pretoken[i], pretoken[i + 1])] += pretoken_count
         max_pair_key = ""
