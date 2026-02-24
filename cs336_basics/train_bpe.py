@@ -117,8 +117,6 @@ def train_bpe(
         pretoken_counts.update(new_words)
 
         # todo: optimize candidate pairs?
-    print(merges)
-    print(len(merges))
     return vocab, merges
 
 
