@@ -94,17 +94,17 @@ def train_bpe(
         for word in pretoken_counts:
             new_word = []
             counter = 0
-            while counter<len(word):
-                if counter+1<len(word) and (word[counter], word[counter + 1]) == max_pair_key:
+            while counter < len(word):
+                if counter + 1 < len(word) and (word[counter], word[counter + 1]) == max_pair_key:
                     # we modify this word
                     new_word.append(new_byte)
-                    counter+=2
+                    counter += 2
                 else:
                     new_word.append(word[counter])
-                    counter+=1
-            
+                    counter += 1
+
             new_word = tuple(new_word)
-            if new_word!= word:
+            if new_word != word:
                 new_words[new_word] = pretoken_counts[word]
                 words_to_delete.append(word)
 
@@ -113,7 +113,7 @@ def train_bpe(
 
         pretoken_counts.update(new_words)
 
-        #todo: optimize candidate pairs?
+        # todo: optimize candidate pairs?
     print(merges)
     print(len(merges))
     return vocab, merges
