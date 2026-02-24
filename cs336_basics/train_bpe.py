@@ -123,4 +123,6 @@ def train_bpe(
 
 
 if __name__ == "__main__":
-    train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 300, special_tokens=["<|endoftext|>"])
+    vocab, merges = train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 500, special_tokens=["<|endoftext|>"])
+    print(f"BPE tokenizer vocab: {vocab}")
+    print(f"BPE tokenizer merges: {merges}")
