@@ -66,7 +66,7 @@ def train_bpe(
         for start, end in zip(chunk_boundaries[:-1], chunk_boundaries[1:]):
             f.seek(start)
             chunk = f.read(end - start).decode("utf-8", errors="ignore")
-            split_chunks = re.split("|".join(special_tokens), chunk)
+            split_chunks = re.split("|".join(map(re.escape, special_tokens)), chunk)
             for split_chunk in split_chunks:
                 pretokens = re.finditer(PAT, split_chunk)
                 for pretoken in pretokens:
