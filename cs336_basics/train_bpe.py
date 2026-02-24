@@ -78,10 +78,39 @@ def train_bpe(
                 candidate_pairs[(pretoken[i], pretoken[i + 1])] += pretoken_count
         max_pair_key = max(candidate_pairs, key=candidate_pairs.get)
         merges.append(max_pair_key)
-        vocab[len(vocab)] = b"".join(max_pair_key)
-    print(pretoken_counts)
+        new_byte = b"".join(max_pair_key)
+        vocab[len(vocab)] = new_byte
+
+        words_to_delete = []
+        new_words = {}
+        for word in pretoken_counts:
+            new_word = []
+            counter = 0
+            while counter<len(word):
+                if counter+1<len(word) and (word[counter], word[counter + 1]) == max_pair_key:
+                    # we modify this word
+                    new_word.append(new_byte)
+                    counter+=2
+                else:
+                    new_word.append(word[counter])
+                    counter+=1
+            
+            new_word = tuple(new_word)
+            if new_word!= word:
+                new_words[new_word] = pretoken_counts[word]
+                words_to_delete.append(word)
+
+        for word in words_to_delete:
+            del pretoken_counts[word]
+
+        pretoken_counts.update(new_words)
+
+        #todo: optimize candidate pairs?
+    print(merges)
+    print(len(merges))
     return vocab, merges
 
 
 if __name__ == "__main__":
-    train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 300, special_tokens=["<|endoftext|>"])
+    # train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 300, special_tokens=["<|endoftext|>"])
+    train_bpe("../data/corpus.en", 500, special_tokens=["<|endoftext|>"])
