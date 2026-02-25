@@ -2,6 +2,7 @@ import regex as re
 import os
 from collections import defaultdict
 from typing import BinaryIO
+from operator import itemgetter
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 NUM_CHUNKS = 4  # TODO: Parallelize pretokenizing on chunks
@@ -79,15 +80,9 @@ def train_bpe(
             # TODO:  Increment/decrement candidate_pairs at token boundaries
             for i in range(len(pretoken) - 1):
                 candidate_pairs[(pretoken[i], pretoken[i + 1])] += pretoken_count
-        max_pair_key = ""
-        max_count = float("-inf")
-        for candidate_pair, count in candidate_pairs.items():
-            if count > max_count:
-                max_pair_key = candidate_pair
-                max_count = count
-            elif count == max_count:
-                if candidate_pair > max_pair_key:
-                    max_pair_key = candidate_pair
+        # Get max first on pair count in corpus, then on pair itself
+        # to get lexicographically greater pair
+        max_pair_key = max(candidate_pairs.items(), key=itemgetter(1, 0))[0]
         merges.append(max_pair_key)
         new_byte = b"".join(max_pair_key)
         vocab[len(vocab)] = new_byte
