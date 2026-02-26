@@ -76,48 +76,56 @@ def train_bpe(
                 pretokens = re.finditer(PAT, split_chunk)
                 for pretoken in pretokens:
                     pretoken_counts[tuple(bytes([c]) for c in pretoken[0].encode("utf-8"))] += 1
-    # Create count of token pairs in corpus
-    candidate_pair_counts = defaultdict(int)
+    # Create count of token pairs in corpus and index of token pairs to pretokens
+    token_pair_counts = defaultdict(int)
+    token_pairs_to_pretokens = defaultdict(set)
     for pretoken, pretoken_count in pretoken_counts.items():
         for i in range(len(pretoken) - 1):
-            candidate_pair_counts[(pretoken[i], pretoken[i + 1])] += pretoken_count
+            token_pair = (pretoken[i], pretoken[i + 1])
+            token_pair_counts[token_pair] += pretoken_count
+            token_pairs_to_pretokens[token_pair].add(pretoken)
     while len(vocab) < vocab_size:
         # Get max first on pair count in corpus, then on pair itself
         # to get lexicographically greater pair
-        max_pair = max(candidate_pair_counts.items(), key=itemgetter(1, 0))[0]
-        merges.append(max_pair)
-        new_byte = b"".join(max_pair)
+        max_token_pair = max(token_pair_counts.items(), key=itemgetter(1, 0))[0]
+        merges.append(max_token_pair)
+        new_byte = b"".join(max_token_pair)
         vocab[len(vocab)] = new_byte
 
-        new_pretoken_counts = {}
-        for word, freq in pretoken_counts.items():
-            token_pairs = _get_token_pairs(word)
-            if max_pair in token_pairs:
-                # Create new word
-                new_word = []
-                counter = 0
-                while counter < len(word):
-                    # Add new token to word at old token boundary if there's a match
-                    if counter + 1 < len(word) and (word[counter], word[counter + 1]) == max_pair:
-                        new_word.append(new_byte)
-                        counter += 2
-                    else:
-                        new_word.append(word[counter])
-                        counter += 1
-                new_word = tuple(new_word)
-                new_pretoken_counts[new_word] = freq
-                # Reduce frequencies of token pairs from old word
-                for token_pair in token_pairs:
-                    if token_pair in candidate_pair_counts:
-                        candidate_pair_counts[token_pair] -= freq
-                        if candidate_pair_counts[token_pair] == 0:
-                            del candidate_pair_counts[token_pair]
-                # Increment frequencies of token pairs from new word
-                for token_pair in _get_token_pairs(new_word):
-                    candidate_pair_counts[token_pair] += freq
-            else:
-                new_pretoken_counts[word] = freq
-        pretoken_counts = new_pretoken_counts
+        pretokens_to_remove = []
+        new_pretokens_to_add = []
+        for word in token_pairs_to_pretokens[max_token_pair]:
+            pretokens_to_remove.append(word)
+            pretoken_freq = pretoken_counts[word]
+            # Create new word
+            new_word = []
+            counter = 0
+            while counter < len(word):
+                # Add new token to word at old token boundary if there's a match
+                if counter + 1 < len(word) and (word[counter], word[counter + 1]) == max_token_pair:
+                    new_word.append(new_byte)
+                    counter += 2
+                else:
+                    new_word.append(word[counter])
+                    counter += 1
+            new_word = tuple(new_word)
+            for token_pair in _get_token_pairs(word):
+                if token_pair in token_pair_counts:
+                    token_pair_counts[token_pair] -= pretoken_freq
+                    if token_pair_counts[token_pair] == 0:
+                        del token_pair_counts[token_pair]
+            # Increment frequencies of token pairs from new word
+            for token_pair in _get_token_pairs(new_word):
+                token_pair_counts[token_pair] += pretoken_freq
+            # Add count for new pretoken to dictionary, remove old representation
+            del pretoken_counts[word]
+            pretoken_counts[new_word] = pretoken_freq
+            new_pretokens_to_add.append(new_word)
+        # Update index with new pretoken representation with merge
+        for pretoken in pretokens_to_remove:
+            token_pairs_to_pretokens[max_token_pair].remove(pretoken)
+        for pretoken in new_pretokens_to_add:
+            token_pairs_to_pretokens[max_token_pair].add(pretoken)
     return vocab, merges
 
 
@@ -127,6 +135,7 @@ if __name__ == "__main__":
     # print(f"BPE tokenizer merges: {merges}")
     vocab, merges = train_bpe("../data/corpus.en", 500, special_tokens=["<|endoftext|>"])
     # print(f"BPE tokenizer vocab: {vocab}")
-    print(f"BPE tokenizer merges:")
-    for t1, t2 in merges:
-        print(f"{t1}, {t2}")
+    # print(f"BPE tokenizer merges:")
+    # for t1, t2 in merges:
+    #     print(f"{t1}, {t2}")
+    # print(vocab)
