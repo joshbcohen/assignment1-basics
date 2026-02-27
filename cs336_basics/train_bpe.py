@@ -3,6 +3,7 @@ import os
 from collections import defaultdict
 from typing import BinaryIO
 from operator import itemgetter
+import copy
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 NUM_CHUNKS = 4  # TODO: Parallelize pretokenizing on chunks
@@ -121,11 +122,15 @@ def train_bpe(
             del pretoken_counts[word]
             pretoken_counts[new_word] = pretoken_freq
             new_pretokens_to_add.append(new_word)
-        # Update index with new pretoken representation with merge
+
+        
+            # Update index with new pretoken representation with merge
         for pretoken in pretokens_to_remove:
-            token_pairs_to_pretokens[max_token_pair].remove(pretoken)
+            for token_pairs in _get_token_pairs(pretoken):
+                token_pairs_to_pretokens[token_pairs].discard(pretoken)
         for pretoken in new_pretokens_to_add:
-            token_pairs_to_pretokens[max_token_pair].add(pretoken)
+            for token_pairs in _get_token_pairs(pretoken):
+                token_pairs_to_pretokens[token_pairs].add(pretoken)
     return vocab, merges
 
 
@@ -133,9 +138,9 @@ if __name__ == "__main__":
     # vocab, merges = train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 500, special_tokens=["<|endoftext|>"])
     # print(f"BPE tokenizer vocab: {vocab}")
     # print(f"BPE tokenizer merges: {merges}")
-    vocab, merges = train_bpe("../data/corpus.en", 500, special_tokens=["<|endoftext|>"])
-    # print(f"BPE tokenizer vocab: {vocab}")
-    # print(f"BPE tokenizer merges:")
-    # for t1, t2 in merges:
-    #     print(f"{t1}, {t2}")
+    vocab, merges = train_bpe("../data/corpus.en", 280, special_tokens=["<|endoftext|>"])
+    #print(f"BPE tokenizer vocab: {vocab}")
+    print(f"BPE tokenizer merges:")
+    for t1, t2 in merges:
+        print(f"{t1}, {t2}")
     # print(vocab)
