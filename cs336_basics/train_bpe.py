@@ -3,10 +3,12 @@ import os
 from collections import defaultdict
 from typing import BinaryIO
 from operator import itemgetter
-import copy
+from multiprocessing import Pool
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-NUM_CHUNKS = 4  # TODO: Parallelize pretokenizing on chunks
+
+NUM_PROCESSES = os.cpu_count()
+NUM_CHUNKS = 3 * NUM_PROCESSES
 
 
 def _find_chunk_boundaries(
@@ -59,25 +61,48 @@ def _find_chunk_boundaries(
 def _get_token_pairs(pretoken: tuple[bytes]) -> list[bytes]:
     return [(pretoken[i], pretoken[i + 1]) for i in range(len(pretoken) - 1)]
 
+
+def _pretokenize(boundary, input_path, special_tokens) -> dict:
+    start, end = boundary
+    pretoken_counts = defaultdict(int)
+    with open(input_path, "rb") as f:
+        f.seek(start)
+        chunk = f.read(end - start).decode("utf-8", errors="ignore")
+        split_chunks = re.split("|".join(map(re.escape, special_tokens)), chunk)
+        for split_chunk in split_chunks:
+            pretokens = re.finditer(PAT, split_chunk)
+            for pretoken in pretokens:
+                pretoken_counts[tuple(bytes([c]) for c in pretoken[0].encode("utf-8"))] += 1
+            
+    return pretoken_counts
+
+    
 def train_bpe(
     input_path: str, vocab_size: int, special_tokens: list[str]
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+    
+    # PRETOKENIZE
     vocab = {i: bytes([i]) for i in range(256)}
     vocab[256] = "<|endoftext|>".encode("utf-8")
     pretoken_counts = defaultdict(int)
     merges = []
+   
     with open(input_path, "rb") as f:
         chunk_boundaries = _find_chunk_boundaries(f, NUM_CHUNKS, b"<|endoftext|>")
-        for start, end in zip(chunk_boundaries[:-1], chunk_boundaries[1:]):
-            f.seek(start)
-            chunk = f.read(end - start).decode("utf-8", errors="ignore")
-            split_chunks = re.split("|".join(map(re.escape, special_tokens)), chunk)
-            # TODO:  Parallelize on chunk boundaries with multiprocessing
-            for split_chunk in split_chunks:
-                pretokens = re.finditer(PAT, split_chunk)
-                for pretoken in pretokens:
-                    pretoken_counts[tuple(bytes([c]) for c in pretoken[0].encode("utf-8"))] += 1
-    # Create count of token pairs in corpus and index of token pairs to pretokens
+        chunk_boundaries = zip(chunk_boundaries[:-1], chunk_boundaries[1:])
+            
+    with Pool(NUM_PROCESSES) as pool:
+        chunk_frequencies = pool.starmap(
+            _pretokenize,
+            [(boundary, input_path, special_tokens) for boundary in chunk_boundaries]
+        )
+    
+    pretoken_counts = defaultdict(int)
+    for chunk_freq in chunk_frequencies:
+        for word, word_count in chunk_freq.items():
+            pretoken_counts[word] += word_count
+    
+    # MERGE BYTES
     token_pair_counts = defaultdict(int)
     token_pairs_to_pretokens = defaultdict(set)
     for pretoken, pretoken_count in pretoken_counts.items():
@@ -138,9 +163,13 @@ if __name__ == "__main__":
     # vocab, merges = train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 500, special_tokens=["<|endoftext|>"])
     # print(f"BPE tokenizer vocab: {vocab}")
     # print(f"BPE tokenizer merges: {merges}")
-    vocab, merges = train_bpe("../data/corpus.en", 280, special_tokens=["<|endoftext|>"])
+    vocab, merges = train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 300, special_tokens=["<|endoftext|>"])
     #print(f"BPE tokenizer vocab: {vocab}")
-    print(f"BPE tokenizer merges:")
-    for t1, t2 in merges:
-        print(f"{t1}, {t2}")
+    # print(f"BPE tokenizer merges:")
+    # for t1, t2 in merges:
+    #     print(f"{t1}, {t2}")
     # print(vocab)
+    with open("vocab.txt", "w") as f:
+        f.write(str(vocab))
+    with open("merges.txt", "w") as f:
+        f.write(str(merges))
