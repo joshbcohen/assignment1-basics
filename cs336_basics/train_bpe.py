@@ -4,8 +4,14 @@ from collections import defaultdict
 from typing import BinaryIO
 from operator import itemgetter
 from multiprocessing import Pool
+import cProfile
+from tqdm import tqdm
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+PAT_COMPILED = re.compile(PAT)
+
+# Pre-build a lookup table: byte value -> single-byte bytes object
+_BYTE_CACHE = tuple(bytes([i]) for i in range(256))
 
 NUM_PROCESSES = os.cpu_count()
 NUM_CHUNKS = 3 * NUM_PROCESSES
@@ -65,16 +71,22 @@ def _get_token_pairs(pretoken: tuple[bytes]) -> list[bytes]:
 def _pretokenize(boundary, input_path, special_tokens) -> dict:
     start, end = boundary
     pretoken_counts = defaultdict(int)
+    byte_cache = _BYTE_CACHE
+    finditer = PAT_COMPILED.finditer
     with open(input_path, "rb") as f:
         f.seek(start)
         chunk = f.read(end - start).decode("utf-8", errors="ignore")
         split_chunks = re.split("|".join(map(re.escape, special_tokens)), chunk)
         for split_chunk in split_chunks:
-            pretokens = re.finditer(PAT, split_chunk)
-            for pretoken in pretokens:
-                pretoken_counts[tuple(bytes([c]) for c in pretoken[0].encode("utf-8"))] += 1
+            for pretoken in finditer(split_chunk):
+                encoded = pretoken[0].encode("utf-8")
+                pretoken_counts[tuple(byte_cache[b] for b in encoded)] += 1
             
     return pretoken_counts
+
+
+def _pretokenize_wrapper(args):
+    return _pretokenize(*args)
 
     
 def train_bpe(
@@ -83,19 +95,19 @@ def train_bpe(
     
     # PRETOKENIZE
     vocab = {i: bytes([i]) for i in range(256)}
-    vocab[256] = "<|endoftext|>".encode("utf-8")
+    vocab[256] = "<|endoftext|>".encode("utf-8")   #todo: should this be special tokens???
     pretoken_counts = defaultdict(int)
     merges = []
    
     with open(input_path, "rb") as f:
         chunk_boundaries = _find_chunk_boundaries(f, NUM_CHUNKS, b"<|endoftext|>")
-        chunk_boundaries = zip(chunk_boundaries[:-1], chunk_boundaries[1:])
+        chunk_boundaries = list(zip(chunk_boundaries[:-1], chunk_boundaries[1:]))
             
     with Pool(NUM_PROCESSES) as pool:
-        chunk_frequencies = pool.starmap(
-            _pretokenize,
-            [(boundary, input_path, special_tokens) for boundary in chunk_boundaries]
-        )
+        chunk_frequencies = list(tqdm(
+            pool.imap(_pretokenize_wrapper, [(b, input_path, special_tokens) for b in chunk_boundaries]),
+            total=len(chunk_boundaries), desc="Pretokenizing"
+        ))
     
     pretoken_counts = defaultdict(int)
     for chunk_freq in chunk_frequencies:
@@ -110,6 +122,7 @@ def train_bpe(
             token_pair = (pretoken[i], pretoken[i + 1])
             token_pair_counts[token_pair] += pretoken_count
             token_pairs_to_pretokens[token_pair].add(pretoken)
+    pbar = tqdm(total=vocab_size - len(vocab), desc="Merging")
     while len(vocab) < vocab_size:
         # Get max first on pair count in corpus, then on pair itself
         # to get lexicographically greater pair
@@ -156,6 +169,8 @@ def train_bpe(
         for pretoken in new_pretokens_to_add:
             for token_pairs in _get_token_pairs(pretoken):
                 token_pairs_to_pretokens[token_pairs].add(pretoken)
+        pbar.update(1)
+    pbar.close()
     return vocab, merges
 
 
@@ -163,7 +178,15 @@ if __name__ == "__main__":
     # vocab, merges = train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 500, special_tokens=["<|endoftext|>"])
     # print(f"BPE tokenizer vocab: {vocab}")
     # print(f"BPE tokenizer merges: {merges}")
-    vocab, merges = train_bpe("../data/TinyStoriesV2-GPT4-valid.txt", 300, special_tokens=["<|endoftext|>"])
+    import time
+
+    start_time = time.time()
+    tokens = 10000
+    profiler = cProfile.Profile()
+    vocab, merges = profiler.runcall(train_bpe, "../data/TinyStoriesV2-GPT4-train.txt", tokens, special_tokens=["<|endoftext|>"])
+    profiler.print_stats(sort="cumtime")
+    end_time = time.time()
+    print(f"{tokens} took {end_time-start_time} seconds")
     #print(f"BPE tokenizer vocab: {vocab}")
     # print(f"BPE tokenizer merges:")
     # for t1, t2 in merges:
