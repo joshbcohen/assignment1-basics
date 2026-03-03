@@ -20,33 +20,52 @@ class Tokenizer:
         self.vocab = vocab
         self.vocab_token_ids = {v: k for k, v in vocab.items()}
         self.merges = merges
-        self.special_tokens = special_tokens
+        self.special_tokens = sorted(special_tokens, reverse=True) if special_tokens is not None else None
     
     def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None):
         pass
 
     def encode(self, text: str) -> list[int]:
-        pretokens = pretokenized_list(text)
-        for merge in self.merges:
-            merged_byte = b"".join(merge)
-            new_pretokens = []
-            for pretoken in pretokens:
-                new_pretoken = []
-                counter = 0
-                while counter < len(pretoken):
-                    # Add new token to word at old token boundary if there's a match
-                    if counter + 1 < len(pretoken) and (pretoken[counter], pretoken[counter + 1]) == merge:
-                        new_pretoken.append(merged_byte)
-                        counter += 2
-                    else:
-                        new_pretoken.append(pretoken[counter])
-                        counter += 1
-                new_pretokens.append(tuple(new_pretoken))
-            pretokens = new_pretokens
+
+        # handle special tokens
+        escaped_special_tokens = map(re.escape, self.special_tokens or [])
+
+        pattern = "("+ "|".join(escaped_special_tokens)+")"
         encoded_bytes = []
-        for pretoken in pretokens:
-            for token in pretoken:
-                encoded_bytes.append(self.vocab_token_ids[token])
+        if self.special_tokens:
+            chunks = re.split(pattern, text)
+            print(chunks)
+        else:
+            chunks = [text]
+
+        for chunk in chunks:
+            if self.special_tokens and chunk in self.special_tokens:
+                encoded_bytes.append(self.vocab_token_ids[chunk.encode('utf-8')]) #TODO: case where not in vocab
+            else:
+                pretokens = pretokenized_list(chunk)
+                for merge in self.merges:
+                    merged_byte = b"".join(merge)
+                    new_pretokens = []
+                    for pretoken in pretokens:
+                        new_pretoken = []
+                        counter = 0
+                        while counter < len(pretoken):
+                            # Add new token to word at old token boundary if there's a match
+                            if counter + 1 < len(pretoken) and (pretoken[counter], pretoken[counter + 1]) == merge:
+                                new_pretoken.append(merged_byte)
+                                counter += 2
+                            else:
+                                new_pretoken.append(pretoken[counter])
+                                counter += 1
+                        new_pretokens.append(tuple(new_pretoken))
+                    pretokens = new_pretokens
+        
+                for pretoken in pretokens:
+                    for token in pretoken:
+                        encoded_bytes.append(self.vocab_token_ids[token])
+
+
+                        
         return encoded_bytes
 
 
