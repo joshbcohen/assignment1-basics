@@ -11,7 +11,7 @@ PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s
 PAT_COMPILED = re.compile(PAT)
 
 # Pre-build a lookup table: byte value -> single-byte bytes object
-_BYTE_CACHE = tuple(bytes([i]) for i in range(256))
+BYTE_CACHE = tuple(bytes([i]) for i in range(256))
 
 NUM_PROCESSES = os.cpu_count()
 NUM_CHUNKS = 3 * NUM_PROCESSES
@@ -71,7 +71,7 @@ def _get_token_pairs(pretoken: tuple[bytes]) -> list[bytes]:
 def _pretokenize(boundary, input_path, special_tokens) -> dict:
     start, end = boundary
     pretoken_counts = defaultdict(int)
-    byte_cache = _BYTE_CACHE
+    byte_cache = BYTE_CACHE
     finditer = PAT_COMPILED.finditer
     with open(input_path, "rb") as f:
         f.seek(start)
@@ -81,7 +81,6 @@ def _pretokenize(boundary, input_path, special_tokens) -> dict:
             for pretoken in finditer(split_chunk):
                 encoded = pretoken[0].encode("utf-8")
                 pretoken_counts[tuple(byte_cache[b] for b in encoded)] += 1
-            
     return pretoken_counts
 
 
