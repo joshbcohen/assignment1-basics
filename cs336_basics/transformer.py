@@ -41,16 +41,16 @@ class Embedding(torch.nn.Module):
         self.device = device
         self.dtype = dtype
 
-        self.w = torch.empty(self.embedding_dim, self.num_embeddings)
+        self.embedding_matrix = torch.empty(self.num_embeddings, self.embedding_dim)
         std = 1
         torch.nn.init.trunc_normal_(
-            tensor=self.w,
+            tensor=self.embedding_matrix,
             mean=0,
             std=std,
             a=-3,
             b=3,
         )
-        self.W = torch.nn.Parameter(self.w)
+        self.embedding_matrix = torch.nn.Parameter(self.embedding_matrix)
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
-        return einsum(self.W, token_ids, "embedding_dim num_embeddings, batch seq_len -> batch seq_len embedding_dim")
+        return self.embedding_matrix[token_ids]
