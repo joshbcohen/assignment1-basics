@@ -61,6 +61,8 @@ class RMSNorm(torch.nn.Module):
         super().__init__()
         self.d_model = d_model
         self.eps = eps
+        self.device = device
+        self.dtype = dtype
 
         self.g = torch.empty(self.d_model)
         std = (2 / (self.d_model)) ** (0.5)
@@ -90,3 +92,55 @@ class RMSNorm(torch.nn.Module):
         # x is (batch_size, seq_len, d_model), output is same
 
         return result.to(in_dtype)
+
+
+class SwiGLU(torch.nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        d_ff: int | None = None,
+        device: torch.device | None = None,
+        dtype: torch.device | None = None,
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.device = device
+        self.dtype = dtype
+        self.d_ff = d_ff or int((8 / 3) * self.d_model)
+        self.w1 = torch.empty(self.d_ff, self.d_model)
+        self.w2 = torch.empty(self.d_model, self.d_ff)
+        self.w3 = torch.empty(self.d_ff, self.d_model)
+        std = (2 / (self.d_ff + self.d_model)) ** (0.5)
+        torch.nn.init.trunc_normal_(
+            tensor=self.w1,
+            mean=0,
+            std=std,
+            a=-3 * std,
+            b=3 * std,
+        )
+        torch.nn.init.trunc_normal_(
+            tensor=self.w2,
+            mean=0,
+            std=std,
+            a=-3 * std,
+            b=3 * std,
+        )
+        torch.nn.init.trunc_normal_(
+            tensor=self.w3,
+            mean=0,
+            std=std,
+            a=-3 * std,
+            b=3 * std,
+        )
+        self.W1 = torch.nn.Parameter(self.w1)
+        self.W2 = torch.nn.Parameter(self.w2)
+        self.W3 = torch.nn.Parameter(self.w3)
+
+    def silu(x: torch.Tensor) -> torch.Tensor:
+        return torch.mul(x, torch.sigmoid(x))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        W1x = einsum(self.W1, x, "d_ff d_model, batch seq_len d_model -> batch seq_len d_ff")
+        W3x = einsum(self.W3, x, "d_ff d_model, batch seq_len d_model -> batch seq_len d_ff")
+        glu = torch.mul(SwiGLU.silu(W1x), W3x)
+        return einsum(self.W2, glu, "d_model d_ff, batch seq_len d_ff -> batch seq_len d_model")
