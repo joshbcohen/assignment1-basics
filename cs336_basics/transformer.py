@@ -25,3 +25,32 @@ class Linear(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return einsum(self.W, x, "d_out d_in, batch seq_len d_in -> batch seq_len d_out")
+
+
+class Embedding(torch.nn.Module):
+    def __init__(
+        self,
+        num_embeddings: int,
+        embedding_dim: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        super().__init__()
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.device = device
+        self.dtype = dtype
+
+        self.w = torch.empty(self.embedding_dim, self.num_embeddings)
+        std = 1
+        torch.nn.init.trunc_normal_(
+            tensor=self.w,
+            mean=0,
+            std=std,
+            a=-3,
+            b=3,
+        )
+        self.W = torch.nn.Parameter(self.w)
+
+    def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
+        return einsum(self.W, token_ids, "embedding_dim num_embeddings, batch seq_len -> batch seq_len embedding_dim")
