@@ -54,10 +54,11 @@ class Embedding(torch.nn.Module):
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         return self.embedding_matrix[token_ids]
-    
-class RMSNorm(torch.nn.Module):
 
-    def __init__(self, d_model:int, eps: float = 1e-5, device=None, dtype=None):
+
+class RMSNorm(torch.nn.Module):
+    def __init__(self, d_model: int, eps: float = 1e-5, device=None, dtype=None):
+        super().__init__()
         self.d_model = d_model
         self.eps = eps
 
@@ -73,9 +74,9 @@ class RMSNorm(torch.nn.Module):
         self.gain = torch.nn.Parameter(self.g)
 
     def _rms(self, x):
-        to_sum = x.pow(2) + self.eps
-        to_mul = to_sum.sum(dim=-1, keep_dim=True)
-        to_sqrt = torch.div(to_mul, self.d_model)
+        to_sum = x.pow(2)
+        to_mul = to_sum.sum(dim=-1, keepdim=True)
+        to_sqrt = torch.div(to_mul, self.d_model) + self.eps
         return to_sqrt.sqrt()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -83,9 +84,9 @@ class RMSNorm(torch.nn.Module):
         x = x.to(torch.float32)
 
         # code for RMSNorm
-        rms = self._rms()
+        rms = self._rms(x)
         first_result = torch.mul(self.gain, x)
-        result = torch.div(first_result,rms)
+        result = torch.div(first_result, rms)
         # x is (batch_size, seq_len, d_model), output is same
 
         return result.to(in_dtype)
