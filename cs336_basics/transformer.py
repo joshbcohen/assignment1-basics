@@ -1,6 +1,6 @@
 import torch
 from einops import einsum, rearrange
-
+import math
 
 class Linear(torch.nn.Module):
     def __init__(
@@ -144,3 +144,34 @@ class SwiGLU(torch.nn.Module):
         W3x = einsum(self.W3, x, "d_ff d_model, batch seq_len d_model -> batch seq_len d_ff")
         glu = torch.mul(SwiGLU.silu(W1x), W3x)
         return einsum(self.W2, glu, "d_model d_ff, batch seq_len d_ff -> batch seq_len d_model")
+
+class RoPE(torch.nn.Module):
+
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device: torch.device | None = None):
+        self.theta = theta
+        self.d_k = d_k
+        self.max_seq_len = max_seq_len
+        self.device = device
+
+    def big_r(self, i: int):
+        def small_r(i, k):
+            angle = i/(self.theta**((2*k - 2)/self.d_k))
+            return torch.Tensor([[math.cos(angle), -math.sin(angle)],[math.sin(angle), math.cos(angle)]])
+        
+        return torch.block_diag(*[small_r(i, k) for k in range(self.d_k)])
+    
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
+        # x should be (..., seq_len, d_k) and output should be same
+        # x should tolerate arbitrary num of batch dimensions
+
+        # token_positions tensor: (..., seq_len)
+
+        list_Rs = [self.big_r(i=i) for i in range(self.max_seq_len)]
+        einsum(x, list_Rs, "... seq_len, d_k, bla bla -> ..., seq_len")
+
+
+        
+        
+        #TODO: i is position somehow
+        
+        pass
