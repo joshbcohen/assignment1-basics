@@ -160,7 +160,7 @@ class RoPE(torch.nn.Module):
 
         self.positions = torch.arange(self.max_seq_len)
 
-        thetas = torch.outer(self.angle, self.positions)
+        thetas = torch.outer(self.positions, self.angle)
 
         self.register_buffer(name = "cos", tensor=torch.cos(thetas), persistent=False)
         self.register_buffer(name = "sin", tensor=torch.sin(thetas), persistent=False)
@@ -177,7 +177,11 @@ class RoPE(torch.nn.Module):
         # x should tolerate arbitrary num of batch dimensions
 
         # token_positions tensor: (..., seq_len)
-        token_positions = token_positions.to(dtype=torch.float32, device = self.device)
+        print(x.shape)
+        print(token_positions)
+        print(self.cos.shape)
+        print(self.sin.shape)
+        token_positions = token_positions.to(dtype=torch.int64, device = self.device)
         
         cos_positions = self.cos[token_positions]
         sin_positions = self.sin[token_positions]
@@ -185,12 +189,15 @@ class RoPE(torch.nn.Module):
         #split into even and odd
         x_even = x[..., 0::2]
         x_odd = x[..., 1::2]
+        print(x_even.shape)
+        print(x_odd.shape)
 
-        first = x_even * cos_positions - x_odd * sin_positions
-        second = x_even * sin_positions + x_even * cos_positions
+        first = cos_positions * x_even - sin_positions * x_even
+        second = sin_positions * x_odd + cos_positions * x_odd
 
         out = torch.zeros_like(x)
-        out[0::2] = first
-        second[1::2] = second
+
+        out[..., 0::2] = first
+        out[..., 1::2] = second
     
         return out
