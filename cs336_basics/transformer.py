@@ -2,6 +2,7 @@ import torch
 from einops import einsum, rearrange
 import math
 
+
 class Linear(torch.nn.Module):
     def __init__(
         self, in_features: int, out_features: int, device: torch.device | None = None, dtype: torch.dtype | None = None
@@ -145,8 +146,8 @@ class SwiGLU(torch.nn.Module):
         glu = torch.mul(SwiGLU.silu(W1x), W3x)
         return einsum(self.W2, glu, "d_model d_ff, batch seq_len d_ff -> batch seq_len d_model")
 
-class RoPE(torch.nn.Module):
 
+class RoPE(torch.nn.Module):
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device: torch.device | None = None):
         super().__init__()
         self.theta = theta
@@ -154,50 +155,36 @@ class RoPE(torch.nn.Module):
         self.max_seq_len = max_seq_len
         self.device = device
 
-
-        self.k = torch.arange(self.d_k//2)
-        self.angle = self.theta**((2*self.k - 2)/self.d_k)
+        self.k = torch.arange(1, self.d_k // 2 + 1)
+        self.angle = 1 / (self.theta ** ((2 * self.k - 2) / self.d_k))
 
         self.positions = torch.arange(self.max_seq_len)
 
         thetas = torch.outer(self.positions, self.angle)
 
-        self.register_buffer(name = "cos", tensor=torch.cos(thetas), persistent=False)
-        self.register_buffer(name = "sin", tensor=torch.sin(thetas), persistent=False)
+        self.register_buffer(name="cos", tensor=torch.cos(thetas), persistent=False)
+        self.register_buffer(name="sin", tensor=torch.sin(thetas), persistent=False)
 
-    # def small_r(self, i, k):
-    #         angle = i/(self.theta**((2*k - 2)/self.d_k))
-    #         return torch.Tensor([[math.cos(angle), -math.sin(angle)],[math.sin(angle), math.cos(angle)]])
-    
-    # def big_r(self, i: int):
-    #     return torch.block_diag(*[self.small_r(i, k) for k in range(self.d_k/2)])
-    
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
         # x should be (..., seq_len, d_k) and output should be same
         # x should tolerate arbitrary num of batch dimensions
 
         # token_positions tensor: (..., seq_len)
-        print(x.shape)
-        print(token_positions)
-        print(self.cos.shape)
-        print(self.sin.shape)
-        token_positions = token_positions.to(dtype=torch.int64, device = self.device)
-        
+        token_positions = token_positions.to(dtype=torch.int64, device=self.device)
+
         cos_positions = self.cos[token_positions]
         sin_positions = self.sin[token_positions]
 
-        #split into even and odd
+        # split into even and odd
         x_even = x[..., 0::2]
         x_odd = x[..., 1::2]
-        print(x_even.shape)
-        print(x_odd.shape)
 
-        first = cos_positions * x_even - sin_positions * x_even
-        second = sin_positions * x_odd + cos_positions * x_odd
+        first = cos_positions * x_even - sin_positions * x_odd
+        second = sin_positions * x_even + cos_positions * x_odd
 
         out = torch.zeros_like(x)
 
         out[..., 0::2] = first
         out[..., 1::2] = second
-    
+
         return out
