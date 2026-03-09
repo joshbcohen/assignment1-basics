@@ -148,30 +148,49 @@ class SwiGLU(torch.nn.Module):
 class RoPE(torch.nn.Module):
 
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device: torch.device | None = None):
+        super().__init__()
         self.theta = theta
         self.d_k = d_k
         self.max_seq_len = max_seq_len
         self.device = device
 
-    def big_r(self, i: int):
-        def small_r(i, k):
-            angle = i/(self.theta**((2*k - 2)/self.d_k))
-            return torch.Tensor([[math.cos(angle), -math.sin(angle)],[math.sin(angle), math.cos(angle)]])
-        
-        return torch.block_diag(*[small_r(i, k) for k in range(self.d_k)])
+
+        self.k = torch.arange(self.d_k//2)
+        self.angle = self.theta**((2*self.k - 2)/self.d_k)
+
+        self.positions = torch.arange(self.max_seq_len)
+
+        thetas = torch.outer(self.angle, self.positions)
+
+        self.register_buffer(name = "cos", tensor=torch.cos(thetas), persistent=False)
+        self.register_buffer(name = "sin", tensor=torch.sin(thetas), persistent=False)
+
+    # def small_r(self, i, k):
+    #         angle = i/(self.theta**((2*k - 2)/self.d_k))
+    #         return torch.Tensor([[math.cos(angle), -math.sin(angle)],[math.sin(angle), math.cos(angle)]])
+    
+    # def big_r(self, i: int):
+    #     return torch.block_diag(*[self.small_r(i, k) for k in range(self.d_k/2)])
     
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
         # x should be (..., seq_len, d_k) and output should be same
         # x should tolerate arbitrary num of batch dimensions
 
         # token_positions tensor: (..., seq_len)
-
-        list_Rs = [self.big_r(i=i) for i in range(self.max_seq_len)]
-        einsum(x, list_Rs, "... seq_len, d_k, bla bla -> ..., seq_len")
-
-
+        token_positions = token_positions.to(dtype=torch.float32, device = self.device)
         
-        
-        #TODO: i is position somehow
-        
-        pass
+        cos_positions = self.cos[token_positions]
+        sin_positions = self.sin[token_positions]
+
+        #split into even and odd
+        x_even = x[..., 0::2]
+        x_odd = x[..., 1::2]
+
+        first = x_even * cos_positions - x_odd * sin_positions
+        second = x_even * sin_positions + x_even * cos_positions
+
+        out = torch.zeros_like(x)
+        out[0::2] = first
+        second[1::2] = second
+    
+        return out
