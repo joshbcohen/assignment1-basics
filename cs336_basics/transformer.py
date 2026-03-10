@@ -219,3 +219,20 @@ class MultiheadSelfAttention(torch.nn.Module):
         self.w_key = torch.empty(self.num_heads * self.d_k, self.d_model)
         self.w_value = torch.empty(self.num_heads * self.d_v, self.d_model)
         self.w_output = torch.empty(self.d_model, self.num_heads * self.d_v)
+
+        self.W_Q = torch.nn.Parameter(self.w_query)
+        self.W_K = torch.nn.Parameter(self.w_key)
+        self.W_V = torch.nn.Parameter(self.w_value)
+        self.W_O = torch.nn.Parameter(self.w_output)
+
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
+        #todo: apply RoPE
+        Q = einsum(self.W_Q, x, "... d_k*h, d_model, ... max_seq_len, d_model -> ... d_k*h, max_seq_len")
+        K = einsum(self.W_K, x, "... d_k*h, d_model, ... max_seq_len, d_model -> ... d_k*h, max_seq_len")
+        V = einsum(self.W_V, x, "... d_v*h, d_model, ... max_seq_len, d_model -> ... d_v*h, max_seq_len")
+        
+        print(f"Q shape: {Q.shape()}")
+        multihead = scaled_dot_product_attention(Q=Q, K=K, V=V) #todo: add mask
+        multihead_self_attn = einsum(self.W_O, multihead, " ... d_model, h*d_v, ... ??? -> ")
+        return multihead_self_attn
+
