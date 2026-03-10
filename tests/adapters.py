@@ -119,6 +119,7 @@ def run_scaled_dot_product_attention(
     """
     return scaled_dot_product_attention(Q, K, V, mask)
 
+
 def run_multihead_self_attention(
     d_model: int,
     num_heads: int,
