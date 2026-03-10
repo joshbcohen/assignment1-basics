@@ -207,3 +207,15 @@ def scaled_dot_product_attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tens
     out = einsum(softmax_attn, V, "... n m, ... m d_v -> ... n d_v ")
 
     return out
+
+
+class MultiheadSelfAttention(torch.nn.Module):
+    def __init__(self, d_model: int, num_heads: int):
+        super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_k = self.d_v = d_model // num_heads
+        self.w_query = torch.empty(self.num_heads * self.d_k, self.d_model)
+        self.w_key = torch.empty(self.num_heads * self.d_k, self.d_model)
+        self.w_value = torch.empty(self.num_heads * self.d_v, self.d_model)
+        self.w_output = torch.empty(self.d_model, self.num_heads * self.d_v)
