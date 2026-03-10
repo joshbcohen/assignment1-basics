@@ -11,7 +11,16 @@ from torch import Tensor
 
 from cs336_basics.train_bpe import train_bpe
 from cs336_basics.tokenizer import Tokenizer
-from cs336_basics.transformer import Linear, Embedding, RMSNorm, SwiGLU, RoPE, softmax, scaled_dot_product_attention
+from cs336_basics.transformer import (
+    Linear,
+    Embedding,
+    RMSNorm,
+    SwiGLU,
+    RoPE,
+    softmax,
+    scaled_dot_product_attention,
+    MultiheadSelfAttention,
+)
 
 
 def run_linear(
@@ -151,7 +160,11 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multihead_self_attention = MultiheadSelfAttention(d_model, num_heads)
+    multihead_self_attention.load_state_dict(
+        {"W_Q": q_proj_weight, "W_K": k_proj_weight, "W_V": v_proj_weight, "W_O": o_proj_weight}
+    )
+    return multihead_self_attention.forward(in_features)
 
 
 def run_multihead_self_attention_with_rope(

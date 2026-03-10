@@ -225,14 +225,12 @@ class MultiheadSelfAttention(torch.nn.Module):
         self.W_V = torch.nn.Parameter(self.w_value)
         self.W_O = torch.nn.Parameter(self.w_output)
 
-    def forward(self, x:torch.Tensor) -> torch.Tensor:
-        #todo: apply RoPE
-        Q = einsum(self.W_Q, x, "... d_k*h, d_model, ... max_seq_len, d_model -> ... d_k*h, max_seq_len")
-        K = einsum(self.W_K, x, "... d_k*h, d_model, ... max_seq_len, d_model -> ... d_k*h, max_seq_len")
-        V = einsum(self.W_V, x, "... d_v*h, d_model, ... max_seq_len, d_model -> ... d_v*h, max_seq_len")
-        
-        print(f"Q shape: {Q.shape()}")
-        multihead = scaled_dot_product_attention(Q=Q, K=K, V=V) #todo: add mask
-        multihead_self_attn = einsum(self.W_O, multihead, " ... d_model, h*d_v, ... ??? -> ")
-        return multihead_self_attn
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # todo: apply RoPE
+        Q = einsum(self.W_Q, x, "... h_d_k d_model, ... max_seq_len d_model -> ... h_d_k max_seq_len")
+        K = einsum(self.W_K, x, "... h_d_k d_model, ... max_seq_len d_model -> ... h_d_k max_seq_len")
+        V = einsum(self.W_V, x, "... h_d_v d_model, ... max_seq_len d_model -> ... h_d_v max_seq_len")
 
+        multihead = scaled_dot_product_attention(Q=Q, K=K, V=V)  # todo: add mask
+        multihead_self_attn = einsum(self.W_O, multihead, " ... d_model h_d_v, ... h_d_v max_seq_len -> ... max_seq_len d_model")
+        return multihead_self_attn
