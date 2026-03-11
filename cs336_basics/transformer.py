@@ -199,6 +199,8 @@ def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
 
 def scaled_dot_product_attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Tensor | None = None):
     d_k = K.shape[-1]
+    # n -> num_queries
+    # m -> num_keys/num_values
     qk = einsum(Q, K, "... n d_k, ... m d_k -> ... n m")
     attn = torch.mul(qk, d_k ** (-0.5))
     if mask is not None:
@@ -227,15 +229,18 @@ class MultiheadSelfAttention(torch.nn.Module):
 
     def forward(self, x: torch.Tensor, rope: bool = False) -> torch.Tensor:
         # todo: apply RoPE (apply to x?)
-        Q = einsum(self.W_Q, x, "... h_d_k d_model, ... max_seq_len d_model -> ... h_d_k max_seq_len")
-        K = einsum(self.W_K, x, "... h_d_k d_model, ... max_seq_len d_model -> ... h_d_k max_seq_len")
-        V = einsum(self.W_V, x, "... h_d_v d_model, ... max_seq_len d_model -> ... h_d_v max_seq_len")
-        
-        Q_head = rearrange(Q, " ... (h d_k) max_seq_len  -> ... h d_k max_seq_len", h=self.num_heads)
-        K_head = rearrange(K, " ... (h d_k) max_seq_len  -> ... h d_k max_seq_len", h=self.num_heads)
-        V_head = rearrange(V, " ... (h d_v) max_seq_len  -> ... h d_v max_seq_len", h=self.num_heads)
+        Q = einsum(self.W_Q, x, "... h_d_k d_model, ... seq_len d_model -> ... h_d_k seq_len")
+        K = einsum(self.W_K, x, "... h_d_k d_model, ... seq_len d_model -> ... h_d_k seq_len")
+        V = einsum(self.W_V, x, "... h_d_v d_model, ... seq_len d_model -> ... h_d_v seq_len")
+        num_queries = Q.shape[-1]
+        num_keys = K.shape[-1]
+        mask = torch.tril(torch.ones((num_queries, num_keys), dtype=torch.bool))
 
-        concatted_heads = scaled_dot_product_attention(Q= Q_head, K=K_head, V=V_head)
-        mha = rearrange(concatted_heads, "... h d_v max_seq_len -> ... (h d_v) max_seq_len ")
-        multihead_self_attn = einsum(self.W_O, mha, " ... d_model h_d_v, ... h_d_v max_seq_len -> ... max_seq_len d_model")
+        Q_head = rearrange(Q, " ... (h d_k) seq_len  -> ... h seq_len d_k", h=self.num_heads)
+        K_head = rearrange(K, " ... (h d_k) seq_len  -> ... h seq_len d_k", h=self.num_heads)
+        V_head = rearrange(V, " ... (h d_v) seq_len  -> ... h seq_len d_v", h=self.num_heads)
+
+        concatted_heads = scaled_dot_product_attention(Q=Q_head, K=K_head, V=V_head, mask=mask)
+        mha = rearrange(concatted_heads, "... h seq_len d_v -> ... seq_len (h d_v)")
+        multihead_self_attn = einsum(self.W_O, mha, " ... d_model h_d_v, ... h_d_v -> ... d_model")
         return multihead_self_attn
