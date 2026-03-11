@@ -225,12 +225,19 @@ class MultiheadSelfAttention(torch.nn.Module):
         self.W_V = torch.nn.Parameter(self.w_value)
         self.W_O = torch.nn.Parameter(self.w_output)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # todo: apply RoPE
+    def forward(self, x: torch.Tensor, rope: bool = False) -> torch.Tensor:
+        # todo: apply RoPE (apply to x?) 
+        if rope:
+
         Q = einsum(self.W_Q, x, "... h_d_k d_model, ... max_seq_len d_model -> ... h_d_k max_seq_len")
         K = einsum(self.W_K, x, "... h_d_k d_model, ... max_seq_len d_model -> ... h_d_k max_seq_len")
         V = einsum(self.W_V, x, "... h_d_v d_model, ... max_seq_len d_model -> ... h_d_v max_seq_len")
+        
+        Q_head = rearrange(Q, " ... (h d_k) max_seq_len  -> ... h d_k max_seq_len", self.num_heads)
+        K_head = rearrange(K, " ... (h d_k) max_seq_len  -> ... h d_k max_seq_len", self.num_heads)
+        V_head = rearrange(V, " ... (h d_v) max_seq_len  -> ... h d_v max_seq_len", self.num_heads)
 
-        multihead = scaled_dot_product_attention(Q=Q, K=K, V=V)  # todo: add mask
-        multihead_self_attn = einsum(self.W_O, multihead, " ... d_model h_d_v, ... h_d_v max_seq_len -> ... max_seq_len d_model")
+        concatted_heads = scaled_dot_product_attention(Q= Q_head, K=K_head, V=V_head)
+        mha = rearrange(concatted_heads, "... h d_v max_seq_len -> ... (h d_v) max_seq_len ")
+        multihead_self_attn = einsum(self.W_O, mha, " ... d_model h_d_v, ... h_d_v max_seq_len -> ... max_seq_len d_model")
         return multihead_self_attn
