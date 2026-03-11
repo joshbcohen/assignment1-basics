@@ -212,7 +212,15 @@ def scaled_dot_product_attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tens
 
 
 class MultiheadSelfAttention(torch.nn.Module):
-    def __init__(self, d_model: int, num_heads: int):
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        apply_rope: bool = False,
+        theta: float | None = None,
+        max_seq_len: int | None = None,
+        device: torch.device | None = None,
+    ):
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
@@ -227,8 +235,11 @@ class MultiheadSelfAttention(torch.nn.Module):
         self.W_V = torch.nn.Parameter(self.w_value)
         self.W_O = torch.nn.Parameter(self.w_output)
 
-    def forward(self, x: torch.Tensor, rope: bool = False) -> torch.Tensor:
-        # todo: apply RoPE (apply to x?)
+        self.apply_rope = apply_rope
+        if apply_rope:
+            self.RoPE = RoPE(theta, self.d_k, max_seq_len, device=device)
+
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
         Q = einsum(self.W_Q, x, "... h_d_k d_model, ... seq_len d_model -> ... h_d_k seq_len")
         K = einsum(self.W_K, x, "... h_d_k d_model, ... seq_len d_model -> ... h_d_k seq_len")
         V = einsum(self.W_V, x, "... h_d_v d_model, ... seq_len d_model -> ... h_d_v seq_len")
@@ -239,6 +250,10 @@ class MultiheadSelfAttention(torch.nn.Module):
         Q_head = rearrange(Q, " ... (h d_k) seq_len  -> ... h seq_len d_k", h=self.num_heads)
         K_head = rearrange(K, " ... (h d_k) seq_len  -> ... h seq_len d_k", h=self.num_heads)
         V_head = rearrange(V, " ... (h d_v) seq_len  -> ... h seq_len d_v", h=self.num_heads)
+
+        if self.apply_rope:
+            Q_head = self.RoPE.forward(Q_head, token_positions)
+            K_head = self.RoPE.forward(K_head, token_positions)
 
         concatted_heads = scaled_dot_product_attention(Q=Q_head, K=K_head, V=V_head, mask=mask)
         mha = rearrange(concatted_heads, "... h seq_len d_v -> ... seq_len (h d_v)")
