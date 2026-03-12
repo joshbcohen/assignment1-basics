@@ -316,7 +316,7 @@ class TransformerLM(torch.nn.Module):
         # TODO: Create num_layers `Transformer` items
         # Potentially in a list unless PyTorch has a better way to handle
         # TODO: Add RMSNorm, linear (for output embedding) and softmax layers for after Transformer blocks
-    
+
     def forward():  # TODO: Add input tensor and any other arguments that may be needed
         # TODO: Forward calls
         # 1. token_embedding.forward()
