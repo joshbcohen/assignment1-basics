@@ -296,3 +296,33 @@ class Transformer(torch.nn.Module):
         x += new_x
 
         return x
+
+
+class TransformerLM(torch.nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        d_ff: int,
+        vocab_size: int,
+        context_length: int,
+        num_layers: int,
+        theta: float | None = None,
+        max_seq_len: int | None = None,
+        device: torch.device | None = None,
+    ):
+        super().__init__()
+        self.token_embedding = Embedding()  # TODO: Add parameters
+        # TODO: Create num_layers `Transformer` items
+        # Potentially in a list unless PyTorch has a better way to handle
+        # TODO: Add RMSNorm, linear (for output embedding) and softmax layers for after Transformer blocks
+    
+    def forward():  # TODO: Add input tensor and any other arguments that may be needed
+        # TODO: Forward calls
+        # 1. token_embedding.forward()
+        # 2. `i=0...num_layers-1` calls to `Transformer[i].forward()`
+        # 3. rms_norm.forward
+        # 4. linear.forward
+        # 5. softmax
+        # 6. return
+        pass
