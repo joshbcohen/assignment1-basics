@@ -259,3 +259,28 @@ class MultiheadSelfAttention(torch.nn.Module):
         mha = rearrange(concatted_heads, "... h seq_len d_v -> ... seq_len (h d_v)")
         multihead_self_attn = einsum(self.W_O, mha, " ... d_model h_d_v, ... h_d_v -> ... d_model")
         return multihead_self_attn
+
+class Transformer(torch.nn.Module):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int):
+        super.__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_ff = d_ff
+        self.rms_norm = RMSNorm(d_model=self.d_model)
+        self.mha = MultiheadSelfAttention(d_model=self.d_model, num_heads=self.num_heads)  # Token Position
+        self.swiglu = SwiGLU(d_model = self.d_model, d_ff = self.d_ff)
+
+    def forward(self, x:torch.Tensor):
+
+        # Transformer
+        normed_x = self.rms_norm.forward(x)
+        new_x = self.mha.forward(normed_x)
+        x+= new_x
+
+        # FF NN
+        normed_x = self.rms_norm.forward(x)
+        new_x = self.swiglu.forward(normed_x)
+        x+= new_x
+
+        return x
+
