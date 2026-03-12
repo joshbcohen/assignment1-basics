@@ -284,7 +284,7 @@ class Transformer(torch.nn.Module):
 
     def forward(self, x: torch.Tensor):
         # Transformer
-        seq_len = x.shape[-1]
+        seq_len = x.shape[-2]
         token_positions = torch.arange(seq_len)
         normed_x = self.rms_norm_attention.forward(x)
         new_x = self.mha.forward(normed_x, token_positions=token_positions)
