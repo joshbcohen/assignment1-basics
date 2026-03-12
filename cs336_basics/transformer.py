@@ -277,15 +277,17 @@ class Transformer(torch.nn.Module):
         self.d_ff = d_ff
         self.rms_norm_attention = RMSNorm(d_model=self.d_model)
         self.mha = MultiheadSelfAttention(
-            d_model=self.d_model, num_heads=self.num_heads, theta=theta, max_seq_len=max_seq_len
+            d_model=self.d_model, num_heads=self.num_heads, theta=theta, max_seq_len=max_seq_len, apply_rope=True
         )  # Token Position
         self.rms_norm_swiglu = RMSNorm(d_model=self.d_model)
         self.swiglu = SwiGLU(d_model=self.d_model, d_ff=self.d_ff)
 
     def forward(self, x: torch.Tensor):
         # Transformer
+        seq_len = x.shape[-1]
+        token_positions = torch.arange(seq_len)
         normed_x = self.rms_norm_attention.forward(x)
-        new_x = self.mha.forward(normed_x)
+        new_x = self.mha.forward(normed_x, token_positions=token_positions)
         x += new_x
 
         # FF NN
