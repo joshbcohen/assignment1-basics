@@ -20,6 +20,7 @@ from cs336_basics.transformer import (
     softmax,
     scaled_dot_product_attention,
     MultiheadSelfAttention,
+    Transformer,
 )
 
 
@@ -305,7 +306,21 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    transformer = Transformer(d_model, num_heads, d_ff, theta=theta, max_seq_len=max_seq_len)
+    transformer.rms_norm_attention.load_state_dict({"gain": weights["ln1.weight"]})
+    transformer.rms_norm_swiglu.load_state_dict({"gain": weights["ln2.weight"]})
+    transformer.mha.load_state_dict(
+        {
+            "W_Q": weights["attn.q_proj.weight"],
+            "W_K": weights["attn.k_proj.weight"],
+            "W_V": weights["attn.v_proj.weight"],
+            "W_O": weights["attn.output_proj.weight"],
+        }
+    )
+    transformer.swiglu.load_state_dict(
+        {"W1": weights["ffn.w1.weight"], "W2": weights["ffn.w2.weight"], "W3": weights["ffn.w3.weight"]}
+    )
+    return transformer.forward(in_features)
 
 
 def run_transformer_lm(
