@@ -301,14 +301,13 @@ class Transformer(torch.nn.Module):
 class TransformerLM(torch.nn.Module):
     def __init__(
         self,
-        d_model: int,
-        num_heads: int,
-        d_ff: int,
         vocab_size: int,
         context_length: int,
+        d_model: int,
         num_layers: int,
+        num_heads: int,
+        d_ff: int,
         theta: float | None = None,
-        max_seq_len: int | None = None,
         device: torch.device | None = None,
     ):
         super().__init__()
@@ -319,11 +318,10 @@ class TransformerLM(torch.nn.Module):
         self.context_length = context_length
         self.num_layers = num_layers
         self.theta = theta
-        self.max_seq_len = max_seq_len
         self.device = device
         
         self.token_embedding = Embedding(num_embeddings=self.vocab_size, embedding_dim=self.d_model)
-        self.transformers = torch.nn.ModuleList([Transformer(d_model = self.d_model, num_heads = self.num_heads, d_ff = self.d_ff, theta = self.theta, max_seq_len=self.max_seq_len, device=self.device) for i in range(self.num_layers)])
+        self.transformers = torch.nn.ModuleList([Transformer(d_model = self.d_model, num_heads = self.num_heads, d_ff = self.d_ff, theta = self.theta, max_seq_len=self.context_length, device=self.device) for i in range(self.num_layers)])
         
         # Potentially in a list unless PyTorch has a better way to handle
         self.rms_norm = RMSNorm(d_model=self.d_model)
