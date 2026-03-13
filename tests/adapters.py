@@ -403,31 +403,43 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    
 
-    transformerlm = TransformerLM(vocab_size=vocab_size, context_length=context_length, num_layers=num_layers, d_model=d_model, num_heads=num_heads, d_ff=d_ff, theta=rope_theta)
+    transformerlm = TransformerLM(
+        vocab_size=vocab_size,
+        context_length=context_length,
+        num_layers=num_layers,
+        d_model=d_model,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        theta=rope_theta,
+    )
 
     transformerlm.token_embedding.load_state_dict({"embedding_matrix": weights["token_embeddings.weight"]})
 
     for i in range(num_layers):
         transformerlm.transformers[i].rms_norm_attention.load_state_dict({"gain": weights[f"layers.{i}.ln1.weight"]})
-        transformerlm.transformers[i].mha.load_state_dict({
-            "W_Q": weights[f"layers.{i}.attn.q_proj.weight"],
-            "W_K": weights[f"layers.{i}.attn.k_proj.weight"],
-            "W_V": weights[f"layers.{i}.attn.v_proj.weight"],
-            "W_O": weights[f"layers.{i}.attn.output_proj.weight"],
-        })
+        transformerlm.transformers[i].mha.load_state_dict(
+            {
+                "W_Q": weights[f"layers.{i}.attn.q_proj.weight"],
+                "W_K": weights[f"layers.{i}.attn.k_proj.weight"],
+                "W_V": weights[f"layers.{i}.attn.v_proj.weight"],
+                "W_O": weights[f"layers.{i}.attn.output_proj.weight"],
+            }
+        )
         transformerlm.transformers[i].rms_norm_swiglu.load_state_dict({"gain": weights[f"layers.{i}.ln2.weight"]})
-        transformerlm.transformers[i].swiglu.load_state_dict({
-            "W1": weights[f"layers.{i}.ffn.w1.weight"],
-            "W2": weights[f"layers.{i}.ffn.w2.weight"],
-            "W3": weights[f"layers.{i}.ffn.w3.weight"],
-        })
+        transformerlm.transformers[i].swiglu.load_state_dict(
+            {
+                "W1": weights[f"layers.{i}.ffn.w1.weight"],
+                "W2": weights[f"layers.{i}.ffn.w2.weight"],
+                "W3": weights[f"layers.{i}.ffn.w3.weight"],
+            }
+        )
 
     transformerlm.rms_norm.load_state_dict({"gain": weights["ln_final.weight"]})
     transformerlm.linear.load_state_dict({"W": weights["lm_head.weight"]})
 
     return transformerlm.forward(in_indices)
+
 
 def run_rmsnorm(
     d_model: int,

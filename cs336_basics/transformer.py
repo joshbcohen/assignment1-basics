@@ -319,18 +319,29 @@ class TransformerLM(torch.nn.Module):
         self.num_layers = num_layers
         self.theta = theta
         self.device = device
-        
+
         self.token_embedding = Embedding(num_embeddings=self.vocab_size, embedding_dim=self.d_model)
-        self.transformers = torch.nn.ModuleList([Transformer(d_model = self.d_model, num_heads = self.num_heads, d_ff = self.d_ff, theta = self.theta, max_seq_len=self.context_length, device=self.device) for i in range(self.num_layers)])
-        
+        self.transformers = torch.nn.ModuleList(
+            [
+                Transformer(
+                    d_model=self.d_model,
+                    num_heads=self.num_heads,
+                    d_ff=self.d_ff,
+                    theta=self.theta,
+                    max_seq_len=self.context_length,
+                    device=self.device,
+                )
+                for i in range(self.num_layers)
+            ]
+        )
+
         # Potentially in a list unless PyTorch has a better way to handle
         self.rms_norm = RMSNorm(d_model=self.d_model)
         self.linear = Linear(in_features=self.d_model, out_features=self.vocab_size, device=self.device)
 
-    def forward(self, x:torch.Tensor):  # Assuming input is token_ids
-    
+    def forward(self, x: torch.Tensor):  # Assuming input is token_ids
         embeddings = self.token_embedding.forward(token_ids=x)
-        
+
         # call transformer layers
         for t in self.transformers:
             embeddings = t(embeddings)
@@ -338,10 +349,7 @@ class TransformerLM(torch.nn.Module):
         # normed encodings takes in tensor of batch, seq_len, d_model
         normed_encodings = self.rms_norm.forward(x=embeddings)
 
-        # linearized must be of dimensions batch, seq_len, vocab_size (only next token?) 
+        # linearized must be of dimensions batch, seq_len, vocab_size (only next token?)
         linearized = self.linear.forward(x=normed_encodings)
 
-        # softmax also has dimensions batch, seq_len, vocab size 
-        out = self.softmax(x=linearized, dim=-1) 
-        
-        return out
+        return linearized
