@@ -322,29 +322,28 @@ class TransformerLM(torch.nn.Module):
         self.max_seq_len = max_seq_len
         self.device = device
         
-        self.token_embedding = Embedding(num_embeddings=10000, embedding_dim=1024)  # TODO: Update params given embeddings
-        # TODO: Create num_layers `Transformer` items
-        self.transformer = Transformer(d_model = self.d_model, num_heads = self.num_heads, d_ff = self.d_ff, theta = self.theta, device=self.device)
-
+        self.token_embedding = Embedding(num_embeddings=self.vocab_size, embedding_dim=self.d_model)
+        self.transformers = torch.nn.ModuleList([Transformer(d_model = self.d_model, num_heads = self.num_heads, d_ff = self.d_ff, theta = self.theta, max_seq_len=self.max_seq_len, device=self.device) for i in range(self.num_layers)])
+        
         # Potentially in a list unless PyTorch has a better way to handle
         self.rms_norm = RMSNorm(d_model=self.d_model)
-        self.linear = Linear(in_features=self.max_seq_len, out_features=self.vocab_size, device=self.device, dtype=self.dtype) # check params here
+        self.linear = Linear(in_features=self.d_model, out_features=self.vocab_size, device=self.device)
 
     def forward(self, x:torch.Tensor):  # Assuming input is token_ids
     
-        # is tokenizer run here? tokenizer = Tokenizer() then tokenizer.encode(text=x). I think no...ß
         embeddings = self.token_embedding.forward(token_ids=x)
         
-        # 2. `i=0...num_layers-1` calls to `Transformer[i].forward()`
-        encodings = self.transformer.forward(x=embeddings) #todo: need to do this multiple times
+        # call transformer layers
+        for t in self.transformers:
+            embeddings = t(embeddings)
 
         # normed encodings takes in tensor of batch, seq_len, d_model
-        normed_encodings = self.rms_norm.forward(x=encodings)
+        normed_encodings = self.rms_norm.forward(x=embeddings)
 
-        # linearized must be of dimensions batch, vocab_size (only next token?) (droping 2 dimensions here?)
+        # linearized must be of dimensions batch, seq_len, vocab_size (only next token?) 
         linearized = self.linear.forward(x=normed_encodings)
 
-        # softmax also has dimensions batch, vocab size
-        softmax = softmax(x=linearized, dim=-1) # dim???
+        # softmax also has dimensions batch, seq_len, vocab size 
+        out = self.softmax(x=linearized, dim=-1) 
         
-        return softmax
+        return out
