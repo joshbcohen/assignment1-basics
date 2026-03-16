@@ -1,4 +1,4 @@
-from typing import Optional, Callable
+from typing import Optional, Callable, Iterable
 import math
 
 import torch
@@ -90,3 +90,14 @@ def get_learning_rate_schedule(t: int, a_max: float, a_min: float, T_w: int, T_c
         return a_min + 0.5 * (1 + math.cos((t - T_w) / (T_c - T_w) * math.pi)) * (a_max - a_min)
     else:
         return a_min
+
+
+def apply_gradient_clipping(params: Iterable[torch.nn.Parameter], max_l2_norm: float, eps: int = 1e-6):
+    grads = torch.flatten(torch.stack([param.grad for param in params if param.grad is not None]))
+    l2_norm = torch.linalg.norm(grads, ord=2)
+    scaling_factor = max_l2_norm / (l2_norm + eps)
+    if l2_norm >= max_l2_norm:
+        for param in params:
+            if param.grad is None:
+                continue
+            param.grad *= scaling_factor
