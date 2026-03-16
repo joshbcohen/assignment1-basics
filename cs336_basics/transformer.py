@@ -1,6 +1,7 @@
 import torch
 from einops import einsum, rearrange
 
+#todo: fix DEVICE!!!
 
 class Linear(torch.nn.Module):
     """Simple linear layer (used to scale to dimension vocab_size)."""
