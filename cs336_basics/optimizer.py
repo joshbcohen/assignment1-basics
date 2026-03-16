@@ -5,7 +5,14 @@ import torch
 
 
 class AdamW(torch.optim.Optimizer):
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=1e-2):
+    def __init__(
+        self,
+        params,
+        lr: float = 1e-3,
+        betas: tuple[float] = (0.9, 0.999),
+        eps: float = 1e-8,
+        weight_decay: float = 1e-2,
+    ):
         """
         params: parameters to be optimized
         lr: alpha, learning rate
@@ -65,3 +72,21 @@ class AdamW(torch.optim.Optimizer):
                 state["m"] = m
                 state["v"] = v
         return loss
+
+
+def get_learning_rate_schedule(t: int, a_max: float, a_min: float, T_w: int, T_c: int) -> float:
+    """
+    Apply learning rate scheduling with cosine annealing
+    t: current step
+    a_max: maximum learning rate
+    a_min: minimum learning rate
+    T_w: number of warm-up iterations
+    T_c: number of cosine annealing iterations
+    returns: final learning rate to use for gradient update at step t
+    """
+    if t < T_w:
+        return (t / T_w) * a_max
+    elif T_w <= t <= T_c:
+        return a_min + 0.5 * (1 + math.cos((t - T_w) / (T_c - T_w) * math.pi)) * (a_max - a_min)
+    else:
+        return a_min
