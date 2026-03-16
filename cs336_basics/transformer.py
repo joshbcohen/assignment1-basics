@@ -1,10 +1,12 @@
 import torch
 from einops import einsum, rearrange
 
-#todo: fix DEVICE!!!
+# todo: fix DEVICE!!!
+
 
 class Linear(torch.nn.Module):
     """Simple linear layer (used to scale to dimension vocab_size)."""
+
     def __init__(
         self, in_features: int, out_features: int, device: torch.device | None = None, dtype: torch.dtype | None = None
     ) -> None:
@@ -209,7 +211,7 @@ def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
 
 def scaled_dot_product_attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Tensor | None = None):
     """Compute dot product attention."""
-   
+
     d_k = K.shape[-1]
     # n -> num_queries
     # m -> num_keys/num_values
@@ -225,6 +227,7 @@ def scaled_dot_product_attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tens
 
 class MultiheadSelfAttention(torch.nn.Module):
     """Apply RoPE, set W_K, W_Q, W_V parameter matrices, and compute MHSA."""
+
     def __init__(
         self,
         d_model: int,
@@ -315,6 +318,7 @@ class Transformer(torch.nn.Module):
 
 class TransformerLM(torch.nn.Module):
     """Full Transformer Language Model."""
+
     def __init__(
         self,
         vocab_size: int,
