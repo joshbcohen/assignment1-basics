@@ -12,7 +12,7 @@ def pretokenized_list(text: str) -> list[tuple[bytes]]:
     for pretoken in finditer(text):
         encoded = pretoken[0].encode("utf-8")
         pretokens.append(tuple(byte_cache[b] for b in encoded))
-    print(pretokens)
+    # print(pretokens)
     return pretokens
 
 
@@ -36,7 +36,7 @@ class Tokenizer:
         encoded_bytes = []
         if self.special_tokens:
             chunks = re.split(pattern, text)
-            print(chunks)
+            # print(chunks)
         else:
             chunks = [text]
 
