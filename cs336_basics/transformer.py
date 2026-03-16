@@ -1,9 +1,9 @@
 import torch
 from einops import einsum, rearrange
-import math
 
 
 class Linear(torch.nn.Module):
+    """Simple linear layer (used to scale to dimension vocab_size)."""
     def __init__(
         self, in_features: int, out_features: int, device: torch.device | None = None, dtype: torch.dtype | None = None
     ) -> None:
@@ -29,6 +29,8 @@ class Linear(torch.nn.Module):
 
 
 class Embedding(torch.nn.Module):
+    """Takes a set of token id's and returns a corresponding set of embeddings."""
+
     def __init__(
         self,
         num_embeddings: int,
@@ -58,6 +60,8 @@ class Embedding(torch.nn.Module):
 
 
 class RMSNorm(torch.nn.Module):
+    """Computes RMS Norm on activations."""
+
     def __init__(self, d_model: int, eps: float = 1e-5, device=None, dtype=None):
         super().__init__()
         self.d_model = d_model
@@ -96,6 +100,8 @@ class RMSNorm(torch.nn.Module):
 
 
 class SwiGLU(torch.nn.Module):
+    """Feed forward neural net with Swiglu activation, to be used in Transformer after MHA computation."""
+
     def __init__(
         self,
         d_model: int,
@@ -148,6 +154,8 @@ class SwiGLU(torch.nn.Module):
 
 
 class RoPE(torch.nn.Module):
+    """Add positional information over embeddings using RoPE."""
+
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device: torch.device | None = None):
         super().__init__()
         self.theta = theta
@@ -191,6 +199,7 @@ class RoPE(torch.nn.Module):
 
 
 def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
+    """Compute softmax on specified dimension."""
     x_max = torch.amax(x, dim=dim, keepdim=True)
     x = torch.sub(x, x_max)
     exp = torch.exp(x)
@@ -198,6 +207,8 @@ def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
 
 
 def scaled_dot_product_attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Tensor | None = None):
+    """Compute dot product attention."""
+   
     d_k = K.shape[-1]
     # n -> num_queries
     # m -> num_keys/num_values
@@ -212,6 +223,7 @@ def scaled_dot_product_attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tens
 
 
 class MultiheadSelfAttention(torch.nn.Module):
+    """Apply RoPE, set W_K, W_Q, W_V parameter matrices, and compute MHSA."""
     def __init__(
         self,
         d_model: int,
@@ -262,6 +274,8 @@ class MultiheadSelfAttention(torch.nn.Module):
 
 
 class Transformer(torch.nn.Module):
+    """Transformer block w pre-norm attention and (swiglu) feed forward networks."""
+
     def __init__(
         self,
         d_model: int,
@@ -283,7 +297,7 @@ class Transformer(torch.nn.Module):
         self.swiglu = SwiGLU(d_model=self.d_model, d_ff=self.d_ff)
 
     def forward(self, x: torch.Tensor):
-        # Transformer
+        # Attention calculation
         seq_len = x.shape[-2]
         token_positions = torch.arange(seq_len)
         normed_x = self.rms_norm_attention.forward(x)
@@ -299,6 +313,7 @@ class Transformer(torch.nn.Module):
 
 
 class TransformerLM(torch.nn.Module):
+    """Full Transformer Language Model."""
     def __init__(
         self,
         vocab_size: int,
@@ -335,11 +350,10 @@ class TransformerLM(torch.nn.Module):
             ]
         )
 
-        # Potentially in a list unless PyTorch has a better way to handle
         self.rms_norm = RMSNorm(d_model=self.d_model)
         self.linear = Linear(in_features=self.d_model, out_features=self.vocab_size, device=self.device)
 
-    def forward(self, x: torch.Tensor):  # Assuming input is token_ids
+    def forward(self, x: torch.Tensor):  # input is tensor of token_ids
         embeddings = self.token_embedding.forward(token_ids=x)
 
         # call transformer layers
