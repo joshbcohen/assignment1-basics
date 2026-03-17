@@ -34,9 +34,7 @@ def load_checkpoint(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
 ) -> int:
-    checkpoint = torch.load(src, weights_only=False)
-    assert isinstance(checkpoint, dict), "Invalid type returned for checkpoint"
-    checkpoint = dict(checkpoint)
+    checkpoint = torch.load(src)
     model.load_state_dict(checkpoint["model"])
     optimizer.load_state_dict(checkpoint["optimizer"])
     return checkpoint["iteration"]
