@@ -1,6 +1,9 @@
+import random
+import os
+import typing
+
 import numpy.typing as npt
 import numpy as np
-import random
 import torch
 from jaxtyping import Int
 
@@ -15,6 +18,28 @@ def data_loading(
     o1.to(device=device)
     o2.to(device=device)
     return (o1, o2)
+
+
+def save_checkpoint(
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    iteration: int,
+    out: str | os.PathLike | typing.BinaryIO | typing.IO[bytes],
+):
+    torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(), "iteration": iteration}, out)
+
+
+def load_checkpoint(
+    src: str | os.PathLike | typing.BinaryIO | typing.IO[bytes],
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+) -> int:
+    checkpoint = torch.load(src, weights_only=False)
+    assert isinstance(checkpoint, dict), "Invalid type returned for checkpoint"
+    checkpoint = dict(checkpoint)
+    model.load_state_dict(checkpoint["model"])
+    optimizer.load_state_dict(checkpoint["optimizer"])
+    return checkpoint["iteration"]
 
 
 if __name__ == "__main__":
