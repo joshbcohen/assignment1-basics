@@ -16,7 +16,7 @@ class Linear(torch.nn.Module):
         self.device = device
         self.dtype = dtype
 
-        self.w = torch.empty(self.out_features, self.in_features)
+        self.w = torch.empty(self.out_features, self.in_features, device=self.device, dtype=self.dtype)
         std = (2 / (self.in_features + self.out_features)) ** (0.5)
         torch.nn.init.trunc_normal_(
             tensor=self.w,
@@ -47,7 +47,9 @@ class Embedding(torch.nn.Module):
         self.device = device
         self.dtype = dtype
 
-        self.embedding_matrix = torch.empty(self.num_embeddings, self.embedding_dim)
+        self.embedding_matrix = torch.empty(
+            self.num_embeddings, self.embedding_dim, device=self.device, dtype=self.dtype
+        )
         std = 1
         torch.nn.init.trunc_normal_(
             tensor=self.embedding_matrix,
@@ -72,7 +74,7 @@ class RMSNorm(torch.nn.Module):
         self.device = device
         self.dtype = dtype
 
-        self.g = torch.empty(self.d_model)
+        self.g = torch.empty(self.d_model, dtype=self.dtype, device=self.device)
         std = (2 / (self.d_model)) ** (0.5)
         torch.nn.init.trunc_normal_(
             tensor=self.g,
@@ -117,9 +119,9 @@ class SwiGLU(torch.nn.Module):
         self.device = device
         self.dtype = dtype
         self.d_ff = d_ff or int((8 / 3) * self.d_model)
-        self.w1 = torch.empty(self.d_ff, self.d_model)
-        self.w2 = torch.empty(self.d_model, self.d_ff)
-        self.w3 = torch.empty(self.d_ff, self.d_model)
+        self.w1 = torch.empty(self.d_ff, self.d_model, device=self.device, dtype=self.dtype)
+        self.w2 = torch.empty(self.d_model, self.d_ff, device=self.device, dtype=self.dtype)
+        self.w3 = torch.empty(self.d_ff, self.d_model, device=self.device, dtype=self.dtype)
         std = (2 / (self.d_ff + self.d_model)) ** (0.5)
         torch.nn.init.trunc_normal_(
             tensor=self.w1,
@@ -268,8 +270,8 @@ class MultiheadSelfAttention(torch.nn.Module):
         V_head = rearrange(V, " ... (h d_v) seq_len  -> ... h seq_len d_v", h=self.num_heads)
 
         if self.apply_rope:
-            Q_head = self.RoPE.forward(Q_head, token_positions)
-            K_head = self.RoPE.forward(K_head, token_positions)
+            Q_head = self.RoPE(Q_head, token_positions)
+            K_head = self.RoPE(K_head, token_positions)
 
         concatted_heads = scaled_dot_product_attention(Q=Q_head, K=K_head, V=V_head, mask=mask)
         mha = rearrange(concatted_heads, "... h seq_len d_v -> ... seq_len (h d_v)")
@@ -288,29 +290,35 @@ class Transformer(torch.nn.Module):
         theta: float | None = None,
         max_seq_len: int | None = None,
         device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
         self.d_model = d_model
         self.num_heads = num_heads
         self.d_ff = d_ff
-        self.rms_norm_attention = RMSNorm(d_model=self.d_model)
+        self.rms_norm_attention = RMSNorm(d_model=self.d_model, device=device)
         self.mha = MultiheadSelfAttention(
-            d_model=self.d_model, num_heads=self.num_heads, theta=theta, max_seq_len=max_seq_len, apply_rope=True
+            d_model=self.d_model,
+            num_heads=self.num_heads,
+            theta=theta,
+            max_seq_len=max_seq_len,
+            apply_rope=True,
+            device=device,
         )  # Token Position
-        self.rms_norm_swiglu = RMSNorm(d_model=self.d_model)
-        self.swiglu = SwiGLU(d_model=self.d_model, d_ff=self.d_ff)
+        self.rms_norm_swiglu = RMSNorm(d_model=self.d_model, device=device)
+        self.swiglu = SwiGLU(d_model=self.d_model, d_ff=self.d_ff, device=device, dtype=dtype)
 
     def forward(self, x: torch.Tensor):
         # Attention calculation
         seq_len = x.shape[-2]
         token_positions = torch.arange(seq_len)
-        normed_x = self.rms_norm_attention.forward(x)
-        new_x = self.mha.forward(normed_x, token_positions=token_positions)
+        normed_x = self.rms_norm_attention(x)
+        new_x = self.mha(normed_x, token_positions=token_positions)
         x += new_x
 
         # FF NN
-        normed_x = self.rms_norm_swiglu.forward(x)
-        new_x = self.swiglu.forward(normed_x)
+        normed_x = self.rms_norm_swiglu(x)
+        new_x = self.swiglu(normed_x)
         x += new_x
 
         return x
@@ -329,6 +337,7 @@ class TransformerLM(torch.nn.Module):
         d_ff: int,
         theta: float | None = None,
         device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
         self.d_model = d_model
@@ -339,8 +348,11 @@ class TransformerLM(torch.nn.Module):
         self.num_layers = num_layers
         self.theta = theta
         self.device = device
+        self.dtype = dtype
 
-        self.token_embedding = Embedding(num_embeddings=self.vocab_size, embedding_dim=self.d_model)
+        self.token_embedding = Embedding(
+            num_embeddings=self.vocab_size, embedding_dim=self.d_model, device=self.device, dtype=self.dtype
+        )
         self.transformers = torch.nn.ModuleList(
             [
                 Transformer(
@@ -350,25 +362,28 @@ class TransformerLM(torch.nn.Module):
                     theta=self.theta,
                     max_seq_len=self.context_length,
                     device=self.device,
+                    dtype=self.dtype,
                 )
-                for i in range(self.num_layers)
+                for _ in range(self.num_layers)
             ]
         )
 
-        self.rms_norm = RMSNorm(d_model=self.d_model)
-        self.linear = Linear(in_features=self.d_model, out_features=self.vocab_size, device=self.device)
+        self.rms_norm = RMSNorm(d_model=self.d_model, device=self.device, dtype=self.dtype)
+        self.linear = Linear(
+            in_features=self.d_model, out_features=self.vocab_size, device=self.device, dtype=self.dtype
+        )
 
     def forward(self, x: torch.Tensor):  # input is tensor of token_ids
-        embeddings = self.token_embedding.forward(token_ids=x)
+        embeddings = self.token_embedding(token_ids=x)
 
         # call transformer layers
         for t in self.transformers:
             embeddings = t(embeddings)
 
         # normed encodings takes in tensor of batch, seq_len, d_model
-        normed_encodings = self.rms_norm.forward(x=embeddings)
+        normed_encodings = self.rms_norm(x=embeddings)
 
         # linearized must be of dimensions batch, seq_len, vocab_size (only next token?)
-        linearized = self.linear.forward(x=normed_encodings)
+        linearized = self.linear(x=normed_encodings)
 
         return linearized
