@@ -20,6 +20,8 @@ dependencies = [
     "wandb>=0.19.7",
     "ty>=0.0.1a16",
     "argparse>=1.4.0",
+    "torchvision>=0.17.2",
+    "tensorboard>=2.20.0",
 ]
 
 [build-system]
