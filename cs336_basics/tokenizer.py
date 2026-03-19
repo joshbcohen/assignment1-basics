@@ -1,4 +1,5 @@
 from typing import Iterable, Iterator
+import ast
 
 import regex as re
 
@@ -25,8 +26,14 @@ class Tokenizer:
         self.merges = merges
         self.special_tokens = sorted(special_tokens, reverse=True) if special_tokens is not None else None
 
+    @classmethod
     def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None):
-        pass
+        with open(vocab_filepath, "r") as vocab_f, open(merges_filepath, "r") as merges_f:
+            return cls(
+                vocab=ast.literal_eval(vocab_f.read()),
+                merges=ast.literal_eval(merges_f.read()),
+                special_tokens=special_tokens,
+            )
 
     def encode(self, text: str) -> list[int]:
         # handle special tokens
