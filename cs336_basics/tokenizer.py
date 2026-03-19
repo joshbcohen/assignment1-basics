@@ -2,6 +2,7 @@ from typing import Iterable, Iterator
 import ast
 
 import regex as re
+import numpy as np
 
 from cs336_basics.train_bpe import BYTE_CACHE, PAT_COMPILED
 
@@ -84,3 +85,9 @@ class Tokenizer:
         decoded_byte_list = [self.vocab.get(id, b"") for id in ids]
         decoded_byte_str = b"".join(decoded_byte_list)
         return bytes.decode(decoded_byte_str, errors="replace")
+
+if __name__ == "__main__":
+    with open("../data/TinyStoriesV2-GPT4-valid.txt", "r") as in_f, open("../data/TinyStoriesV2-GPT4-valid.npy", "wb") as out_f:
+        ti = Tokenizer.from_files(vocab_filepath="tinystories_10000_vocab.txt", merges_filepath="tinystories_10000_merges.txt", special_tokens=["<|endoftext|>"])
+        val = np.fromiter(ti.encode_iterable(in_f), dtype=np.int64)
+        np.save(out_f, val)
