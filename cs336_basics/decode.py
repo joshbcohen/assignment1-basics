@@ -31,7 +31,7 @@ def decode(
                 idx += 1
             cutoff = sorted[idx]
             softmaxxed *= softmaxxed >= cutoff
-            softmaxxed / torch.sum(softmaxxed)
+            softmaxxed /= torch.sum(softmaxxed)
 
         token = torch.multinomial(softmaxxed, num_samples=1).item()
 
