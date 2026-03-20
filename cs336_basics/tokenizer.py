@@ -27,6 +27,7 @@ class Tokenizer:
         self.merges = merges
         self.merges_to_idx = {merge: idx for idx, merge in enumerate(self.merges)}
         self.special_tokens = sorted(special_tokens, reverse=True) if special_tokens is not None else None
+        self.pattern = re.compile("(" + "|".join(map(re.escape, self.special_tokens or [])) + ")")
 
     @classmethod
     def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None = None):
@@ -39,12 +40,9 @@ class Tokenizer:
 
     def encode(self, text: str) -> list[int]:
         # handle special tokens
-        escaped_special_tokens = map(re.escape, self.special_tokens or [])
-
-        pattern = "(" + "|".join(escaped_special_tokens) + ")"
         encoded_bytes = []
         if self.special_tokens:
-            chunks = re.split(pattern, text)
+            chunks = re.split(self.pattern, text)
             # print(chunks)
         else:
             chunks = [text]
@@ -103,7 +101,7 @@ class Tokenizer:
         return bytes.decode(decoded_byte_str, errors="replace")
 
 if __name__ == "__main__":
-    with open("../data/TinyStoriesV2-GPT4-valid.txt", "r") as in_f, open("../data/TinyStoriesV2-GPT4-valid.npy", "wb") as out_f:
+    with open("../data/TinyStoriesV2-GPT4-train.txt", "r") as in_f, open("../data/TinyStoriesV2-GPT4-train.npy", "wb") as out_f:
         ti = Tokenizer.from_files(vocab_filepath="tinystories_10000_vocab.txt", merges_filepath="tinystories_10000_merges.txt", special_tokens=["<|endoftext|>"])
-        val = np.fromiter(ti.encode_iterable(in_f), dtype=np.int64)
+        val = np.array(list(ti.encode_iterable(in_f)))
         np.save(out_f, val)
