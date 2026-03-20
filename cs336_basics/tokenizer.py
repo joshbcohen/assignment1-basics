@@ -25,6 +25,7 @@ class Tokenizer:
         self.vocab = vocab
         self.vocab_token_ids = {v: k for k, v in vocab.items()}
         self.merges = merges
+        self.merges_to_idx = {merge: idx for idx, merge in enumerate(self.merges)}
         self.special_tokens = sorted(special_tokens, reverse=True) if special_tokens is not None else None
 
     @classmethod
@@ -53,25 +54,40 @@ class Tokenizer:
                 encoded_bytes.append(self.vocab_token_ids[chunk.encode("utf-8")])  # TODO: case where not in vocab
             else:
                 pretokens = pretokenized_list(chunk)
-                for merge in self.merges:
-                    merged_byte = b"".join(merge)
-                    new_pretokens = []
-                    for pretoken in pretokens:
-                        new_pretoken = []
+                words = []
+                for pretoken in pretokens:
+                    word = pretoken
+                    while len(word) >= 2:
+                        # See if any more merges can be applied
+                        merge_to_apply = None
+                        merged_byte = None
+                        best_merge_idx = float("inf")
+                        new_word = []
+                        for t1, t2 in zip(word[:-1], word[1:]):
+                            merge_idx = self.merges_to_idx.get((t1, t2), float("inf"))
+                            if merge_idx < best_merge_idx:
+                                merge_to_apply = (t1, t2)
+                                best_merge_idx = merge_idx
+                        # Nothing to apply- break out of loop
+                        if merge_to_apply is None:
+                            break
+                        new_word = []
                         counter = 0
-                        while counter < len(pretoken):
+                        if merge_to_apply is not None:
+                            merged_byte = b"".join(merge_to_apply)
+                        while counter < len(word):
                             # Add new token to word at old token boundary if there's a match
-                            if counter + 1 < len(pretoken) and (pretoken[counter], pretoken[counter + 1]) == merge:
-                                new_pretoken.append(merged_byte)
+                            if counter + 1 < len(word) and (word[counter], word[counter + 1]) == merge_to_apply:
+                                new_word.append(merged_byte)
                                 counter += 2
                             else:
-                                new_pretoken.append(pretoken[counter])
+                                new_word.append(word[counter])
                                 counter += 1
-                        new_pretokens.append(tuple(new_pretoken))
-                    pretokens = new_pretokens
+                        word = new_word
+                    words.append(word)
 
-                for pretoken in pretokens:
-                    for token in pretoken:
+                for word in words:
+                    for token in word:
                         encoded_bytes.append(self.vocab_token_ids[token])
 
         return encoded_bytes
