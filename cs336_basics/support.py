@@ -12,6 +12,7 @@ def cross_entropy(logits: torch.Tensor, targets: torch.Tensor):
     log_sum_exp = torch.log(torch.sum(torch.exp(logits), dim=-1))
 
     index = rearrange(targets, "batch -> batch 1")
+    index = index.to(logits.device)
     target_logits = torch.gather(logits, dim=-1, index=index)
     target_logits = rearrange(target_logits, "batch 1 -> batch")
 

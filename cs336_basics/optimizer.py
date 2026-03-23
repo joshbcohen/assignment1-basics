@@ -50,8 +50,8 @@ class AdamW(torch.optim.Optimizer):
                 t = state.get("t", 1)
 
                 # Get first and second moment vectors from state, or initialize to 0
-                m = state.get("m", torch.zeros(p.data.shape))
-                v = state.get("v", torch.zeros(p.data.shape))
+                m = state.get("m", torch.zeros(p.data.shape, device=p.data.device))
+                v = state.get("v", torch.zeros(p.data.shape, device=p.data.device))
 
                 # Get gradient of loss with respect to p at current time step
                 grad = p.grad.data
@@ -93,10 +93,12 @@ def get_learning_rate_schedule(t: int, a_max: float, a_min: float, T_w: int, T_c
 
 
 def apply_gradient_clipping(params: Iterable[torch.nn.Parameter], max_l2_norm: float, eps: int = 1e-6):
-    grads = torch.flatten(torch.stack([param.grad for param in params if param.grad is not None]))
+    params = list(params)
+    grad_tensors = [param.grad.flatten() for param in params if param.grad is not None]
+    grads = torch.cat(grad_tensors)
     l2_norm = torch.linalg.norm(grads, ord=2)
-    scaling_factor = max_l2_norm / (l2_norm + eps)
     if l2_norm >= max_l2_norm:
+        scaling_factor = max_l2_norm / (l2_norm + eps)
         for param in params:
             if param.grad is None:
                 continue

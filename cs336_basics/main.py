@@ -1,10 +1,11 @@
+
 import argparse
+import os
 from uuid import uuid4
 import logging
-
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
-
+from tqdm import tqdm
 from transformer import TransformerLM
 from support import cross_entropy
 from optimizer import AdamW, get_learning_rate_schedule, apply_gradient_clipping
@@ -56,6 +57,7 @@ def main():
     logger.info(f"Using {checkpoint_uuid} as unique prefix if no checkpoint prefix is provided")
     parser.add_argument("--checkpoint-dir", type=str, default="./checkpoints", help="directory to save checkpoints in")
     parser.add_argument("--checkpoint-prefix", type=str, default=f"run-{checkpoint_uuid}-checkpoint-")
+    parser.add_argument("--save-every", type=int, default=1000, help="Save a checkpoint every N steps")
 
     # load checkpoint args
     parser.add_argument("--load-checkpoint-from", type=str, help="If provided, load checkpoint from this filepath")
@@ -82,6 +84,7 @@ def main():
         num_heads=args.num_heads,
         d_ff=args.d_ff,
         theta=args.theta,
+        device=args.device,
     )
 
     optimizer = AdamW(
@@ -118,12 +121,12 @@ def train_one_epoch(epoch_index, tb_writer, training_loader, optimizer, model, l
     logits = model(inputs)
 
     # Compute the loss and its gradients
-    print(f"logits: {logits} \n\ntargets: {targets}")
     # support.cross_entropy expects logits of shape (batch, vocab) and targets of shape (batch,)
     # the model returns (batch, seq, vocab) and targets are (batch, seq) — flatten the seq dim
-    loss = loss_fn(logits, targets)
+    B, S, V = logits.shape
+    loss = loss_fn(logits.reshape(B * S, V), targets.reshape(B * S))
     loss.backward()
-    apply_gradient_clipping(model.parameters(max), max_l2_norm=args.max_l2_norm, eps=args.eps)
+    apply_gradient_clipping(model.parameters(), max_l2_norm=args.max_l2_norm, eps=args.eps)
 
     get_learning_rate_schedule(t=epoch_index, a_max=args.a_max, a_min=args.a_min, T_w=args.T_w, T_c=args.T_c)
     # Adjust learning weights
@@ -139,12 +142,14 @@ def train_one_epoch(epoch_index, tb_writer, training_loader, optimizer, model, l
     #     tb_writer.add_scalar("Loss/train", last_loss, tb_x)
     #     running_loss = 0.0
 
-    save_checkpoint(
-        model=model,
-        optimizer=optimizer,
-        iteration=epoch_index,
-        out=f"{args.checkpoint_dir}/{args.checkpoint_prefix}{epoch_index}.pt",
-    )
+    if (epoch_index + 1) % args.save_every == 0:
+        os.makedirs(args.checkpoint_dir, exist_ok=True)
+        save_checkpoint(
+            model=model,
+            optimizer=optimizer,
+            iteration=epoch_index,
+            out=f"{args.checkpoint_dir}/{args.checkpoint_prefix}{epoch_index}.pt",
+        )
 
     return last_loss
 
@@ -155,5 +160,5 @@ if __name__ == "__main__":
     wandb_run = wandb.init(project="mini-llm")
     wandb_run.watch(model)
 
-    for epoch_index in range(last_epoch_index, args.epochs):
+    for epoch_index in tqdm(range(last_epoch_index, args.epochs), desc="Epochs"):
         train_one_epoch(epoch_index, tb_writer, training_loader, optimizer, model, loss_fn, wandb_run, args)

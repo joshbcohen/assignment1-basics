@@ -168,10 +168,10 @@ class RoPE(torch.nn.Module):
         self.max_seq_len = max_seq_len
         self.device = device
 
-        self.k = torch.arange(1, self.d_k // 2 + 1)
+        self.k = torch.arange(1, self.d_k // 2 + 1, device=self.device)
         self.angle = 1 / (self.theta ** ((2 * self.k - 2) / self.d_k))
 
-        self.positions = torch.arange(self.max_seq_len)
+        self.positions = torch.arange(self.max_seq_len, device=self.device)
 
         thetas = torch.outer(self.positions, self.angle)
 
@@ -243,10 +243,10 @@ class MultiheadSelfAttention(torch.nn.Module):
         self.d_model = d_model
         self.num_heads = num_heads
         self.d_k = self.d_v = d_model // num_heads
-        self.w_query = torch.empty(self.num_heads * self.d_k, self.d_model)
-        self.w_key = torch.empty(self.num_heads * self.d_k, self.d_model)
-        self.w_value = torch.empty(self.num_heads * self.d_v, self.d_model)
-        self.w_output = torch.empty(self.d_model, self.num_heads * self.d_v)
+        self.w_query = torch.empty(self.num_heads * self.d_k, self.d_model, device=device)
+        self.w_key = torch.empty(self.num_heads * self.d_k, self.d_model, device=device)
+        self.w_value = torch.empty(self.num_heads * self.d_v, self.d_model, device=device)
+        self.w_output = torch.empty(self.d_model, self.num_heads * self.d_v, device=device)
 
         self.W_Q = torch.nn.Parameter(self.w_query)
         self.W_K = torch.nn.Parameter(self.w_key)
@@ -263,7 +263,7 @@ class MultiheadSelfAttention(torch.nn.Module):
         V = einsum(self.W_V, x, "... h_d_v d_model, ... seq_len d_model -> ... h_d_v seq_len")
         num_queries = Q.shape[-1]
         num_keys = K.shape[-1]
-        mask = torch.tril(torch.ones((num_queries, num_keys), dtype=torch.bool))
+        mask = torch.tril(torch.ones((num_queries, num_keys), dtype=torch.bool, device=Q.device))
 
         Q_head = rearrange(Q, " ... (h d_k) seq_len  -> ... h seq_len d_k", h=self.num_heads)
         K_head = rearrange(K, " ... (h d_k) seq_len  -> ... h seq_len d_k", h=self.num_heads)
@@ -311,15 +311,15 @@ class Transformer(torch.nn.Module):
     def forward(self, x: torch.Tensor):
         # Attention calculation
         seq_len = x.shape[-2]
-        token_positions = torch.arange(seq_len)
+        token_positions = torch.arange(seq_len, device=x.device)
         normed_x = self.rms_norm_attention(x)
         new_x = self.mha(normed_x, token_positions=token_positions)
-        x += new_x
+        x = x + new_x
 
         # FF NN
         normed_x = self.rms_norm_swiglu(x)
         new_x = self.swiglu(normed_x)
-        x += new_x
+        x = x + new_x
 
         return x
 
