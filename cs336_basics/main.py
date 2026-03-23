@@ -71,10 +71,8 @@ def main():
         device=args.device,
     )
 
-    optimizer = AdamW(
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-    )
+    print(len(training_loader))
+    print(len(training_loader[0]))
 
     model = TransformerLM(
         vocab_size=args.vocab_size,
@@ -84,6 +82,12 @@ def main():
         num_heads=args.num_heads,
         d_ff=args.d_ff,
         theta=args.theta,
+    )
+
+    optimizer = AdamW(
+        params=model.parameters(),
+        lr=args.lr,
+        weight_decay=args.weight_decay,
     )
 
     loss_fn = cross_entropy
@@ -103,41 +107,43 @@ def train_one_epoch(epoch_index, tb_writer, training_loader, optimizer, model, l
     # Here, we use enumerate(training_loader) instead of
     # iter(training_loader) so that we can track the batch
     # index and do some intra-epoch reporting
-    for i, data in enumerate(training_loader):
-        # Every data instance is an input + label pair
-        inputs, targets = data
+    #for i, data in enumerate(training_loader):
+    # Every data instance is an input + label pair
+    inputs, targets = training_loader
 
-        # Zero your gradients for every batch!
-        optimizer.zero_grad()
+    # Zero your gradients for every batch!
+    optimizer.zero_grad()
 
-        # Make predictions for this batch
-        logits = model(inputs)
+    # Make predictions for this batch
+    logits = model(inputs)
 
-        # Compute the loss and its gradients
-        loss = loss_fn(logits, targets)
-        loss.backward()
+    # Compute the loss and its gradients
+    print(f"logits: {logits} \n\ntargets: {targets}")
+    # support.cross_entropy expects logits of shape (batch, vocab) and targets of shape (batch,)
+    # the model returns (batch, seq, vocab) and targets are (batch, seq) — flatten the seq dim
+    loss = loss_fn(logits, targets)
+    loss.backward()
+    apply_gradient_clipping(model.parameters(max), max_l2_norm=args.max_l2_norm, eps=args.eps)
 
-        apply_gradient_clipping(model.parameters(max), max_l2_norm=args.max_l2_norm, eps=args.eps)
+    get_learning_rate_schedule(t=epoch_index, a_max=args.a_max, a_min=args.a_min, T_w=args.T_w, T_c=args.T_c)
+    # Adjust learning weights
+    optimizer.step()
 
-        get_learning_rate_schedule(t=i, a_max=args.a_max, a_min=args.a_min, T_w=args.T_w, T_c=args.T_c)
-        # Adjust learning weights
-        optimizer.step()
-
-        # Gather data and report
-        running_loss += loss.item()
-        wandb_run.log({"loss": loss})
-        if i % 1000 == 999:
-            last_loss = running_loss / 1000  # loss per batch
-            print("  batch {} loss: {}".format(i + 1, last_loss))
-            tb_x = epoch_index * len(training_loader) + i + 1
-            tb_writer.add_scalar("Loss/train", last_loss, tb_x)
-            running_loss = 0.0
+    # Gather data and report
+    running_loss += loss.item()
+    wandb_run.log({"loss": loss})
+    # if i % 1000 == 999:
+    #     last_loss = running_loss / 1000  # loss per batch
+    #     print("  batch {} loss: {}".format(i + 1, last_loss))
+    #     tb_x = epoch_index * len(training_loader) + i + 1
+    #     tb_writer.add_scalar("Loss/train", last_loss, tb_x)
+    #     running_loss = 0.0
 
     save_checkpoint(
         model=model,
         optimizer=optimizer,
         iteration=epoch_index,
-        out=f"{args.checkpoint_dir}/{args.checkpoint_prefix}{i}.pt",
+        out=f"{args.checkpoint_dir}/{args.checkpoint_prefix}{epoch_index}.pt",
     )
 
     return last_loss

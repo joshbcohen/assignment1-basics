@@ -101,7 +101,7 @@ class Tokenizer:
         return bytes.decode(decoded_byte_str, errors="replace")
 
 if __name__ == "__main__":
-    with open("../data/TinyStoriesV2-GPT4-train.txt", "r") as in_f, open("../data/TinyStoriesV2-GPT4-train.npy", "wb") as out_f:
+    with open("../data/TinyStoriesV2-GPT4-valid.txt", "r") as in_f, open("../data/TinyStoriesV2-GPT4-valid.npy", "wb") as out_f:
         ti = Tokenizer.from_files(vocab_filepath="tinystories_10000_vocab.txt", merges_filepath="tinystories_10000_merges.txt", special_tokens=["<|endoftext|>"])
         val = np.array(list(ti.encode_iterable(in_f)))
         np.save(out_f, val)
