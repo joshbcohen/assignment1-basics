@@ -26,8 +26,8 @@ def main():
     parser.add_argument("--context_length", type=int, default=256, help="Context length of LM.")
 
     # optimizer
-    parser.add_argument("--lr", type=int, default=64, help="Learning rate")
-    parser.add_argument("--weight_decay", type=int, default=256, help="Weight decay of optimizer.")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay of optimizer.")
 
     # transformer
     parser.add_argument("--vocab_size", type=int, default=10000, help="Size of the token dataset.")
@@ -40,17 +40,17 @@ def main():
     parser.add_argument("--theta", type=int, default=1000, help="Theta value for RoPE.")
 
     # gradient_clipping
-    parser.add_argument("--max_l2_norm", type=int, default=10000, help="Size of the token dataset.")
-    parser.add_argument("--eps", type=int, default=512, help="Dimensions of model.")
+    parser.add_argument("--max_l2_norm", type=float, default=1.0, help="Maximum L2 norm for gradient clipping.")
+    parser.add_argument("--eps", type=float, default=1e-6, help="Epsilon value for optimizer.")
 
     # learning rate schedulers
-    parser.add_argument("--a_max", type=int, default=10000, help="Size of the token dataset.")
-    parser.add_argument("--a_min", type=int, default=512, help="Dimensions of model.")
-    parser.add_argument("--T_w", type=int, default=4, help="Number of layers for Transformer.")
-    parser.add_argument("--T_c", type=int, default=16, help="Number of heads for Transformer.")
+    parser.add_argument("--a_max", type=float, default=1e-3, help="Maximum value for learning rate schedule.")
+    parser.add_argument("--a_min", type=float, default=1e-4, help="Minimum value for learning rate schedule.")
+    parser.add_argument("--T_w", type=int, default=1000, help="Warm-up period for learning rate schedule.")
+    parser.add_argument("--T_c", type=int, default=10000, help="Cool-down period for learning rate schedule.")
 
     # training loop
-    parser.add_argument("--epochs", type=int, default=10000, help="Number of epochs to train")
+    parser.add_argument("--iterations", type=int, default=1000, help="Number of training iterations")
 
     # save checkpoint args
     checkpoint_uuid = uuid4().hex[:9]
@@ -73,9 +73,6 @@ def main():
         device=args.device,
     )
 
-    print(len(training_loader))
-    print(len(training_loader[0]))
-
     model = TransformerLM(
         vocab_size=args.vocab_size,
         context_length=args.context_length,
@@ -96,14 +93,14 @@ def main():
     loss_fn = cross_entropy
 
     if args.load_checkpoint_from is not None:
-        last_epoch_index = load_checkpoint(args.load_checkpoint_from, model, optimizer)
+        last_iteration = load_checkpoint(args.load_checkpoint_from, model, optimizer)
     else:
-        last_epoch_index = 0
+        last_iteration = 0
 
-    return training_loader, optimizer, model, loss_fn, last_epoch_index, args
+    return training_loader, optimizer, model, loss_fn, last_iteration, args
 
 
-def train_one_epoch(epoch_index, tb_writer, training_loader, optimizer, model, loss_fn, wandb_run, args):
+def train_one_iteration(iteration, tb_writer, training_loader, optimizer, model, loss_fn, wandb_run, args):
     running_loss = 0.0
     last_loss = 0.0
 
@@ -128,37 +125,33 @@ def train_one_epoch(epoch_index, tb_writer, training_loader, optimizer, model, l
     loss.backward()
     apply_gradient_clipping(model.parameters(), max_l2_norm=args.max_l2_norm, eps=args.eps)
 
-    get_learning_rate_schedule(t=epoch_index, a_max=args.a_max, a_min=args.a_min, T_w=args.T_w, T_c=args.T_c)
+    new_lr = get_learning_rate_schedule(t=iteration, a_max=args.a_max, a_min=args.a_min, T_w=args.T_w, T_c=args.T_c)
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = new_lr
     # Adjust learning weights
     optimizer.step()
 
     # Gather data and report
     running_loss += loss.item()
     wandb_run.log({"loss": loss})
-    # if i % 1000 == 999:
-    #     last_loss = running_loss / 1000  # loss per batch
-    #     print("  batch {} loss: {}".format(i + 1, last_loss))
-    #     tb_x = epoch_index * len(training_loader) + i + 1
-    #     tb_writer.add_scalar("Loss/train", last_loss, tb_x)
-    #     running_loss = 0.0
 
-    if (epoch_index + 1) % args.save_every == 0:
+    if (iteration + 1) % args.save_every == 0:
         os.makedirs(args.checkpoint_dir, exist_ok=True)
         save_checkpoint(
             model=model,
             optimizer=optimizer,
-            iteration=epoch_index,
-            out=f"{args.checkpoint_dir}/{args.checkpoint_prefix}{epoch_index}.pt",
+            iteration=iteration,
+            out=f"{args.checkpoint_dir}/{args.checkpoint_prefix}{iteration}.pt",
         )
 
     return last_loss
 
 
 if __name__ == "__main__":
-    training_loader, optimizer, model, loss_fn, last_epoch_index, args = main()
+    training_loader, optimizer, model, loss_fn, last_iteration, args = main()
     tb_writer = SummaryWriter()
     wandb_run = wandb.init(project="mini-llm")
     wandb_run.watch(model)
 
-    for epoch_index in tqdm(range(last_epoch_index, args.epochs), desc="Epochs"):
-        train_one_epoch(epoch_index, tb_writer, training_loader, optimizer, model, loss_fn, wandb_run, args)
+    for iteration in tqdm(range(last_iteration, args.iterations), desc="Iterations"):
+        train_one_iteration(iteration, tb_writer, training_loader, optimizer, model, loss_fn, wandb_run, args)
