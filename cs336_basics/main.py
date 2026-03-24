@@ -1,4 +1,3 @@
-
 import argparse
 import os
 from uuid import uuid4
@@ -107,7 +106,7 @@ def train_one_iteration(iteration, tb_writer, training_loader, optimizer, model,
     # Here, we use enumerate(training_loader) instead of
     # iter(training_loader) so that we can track the batch
     # index and do some intra-epoch reporting
-    #for i, data in enumerate(training_loader):
+    # for i, data in enumerate(training_loader):
     # Every data instance is an input + label pair
     inputs, targets = training_loader
 
