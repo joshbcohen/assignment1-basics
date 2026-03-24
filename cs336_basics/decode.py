@@ -32,7 +32,7 @@ def decode(
 
         if p is not None:
             summed = 0
-            sorted = torch.sort(softmaxxed, descending=True)
+            sorted = torch.sort(softmaxxed, descending=True).values
             idx = 0
             while summed < p:
                 summed += sorted[idx]
@@ -44,11 +44,12 @@ def decode(
         token = torch.multinomial(softmaxxed, num_samples=1).item()
 
         output.append(token)
-        prompt_tensor = torch.append(prompt_tensor, token)
+        int_prompt.append(token)
+        prompt_tensor = torch.tensor(int_prompt).unsqueeze(0)
         count += 1
 
     tokenized_output = tokenizer.decode(output)
-    
+
 
     return tokenized_output
 
@@ -58,10 +59,11 @@ if __name__ == "__main__":
     tokenizer = Tokenizer.from_files(vocab_path, merges_path, special_tokens=["<|endoftext|>"])
     model = TransformerLM(vocab_size=10000, context_length=256, d_model=512, num_layers=4, num_heads=16, d_ff=1344, theta=1000)
     optimizer = AdamW(params = model.parameters(), lr=1e-4, weight_decay=0.01, betas=(0.9, 0.999), eps=1e-8)
-    load_checkpoint("checkpoints/run-c5f913af8-checkpoint-2999.pt", model=model, optimizer=optimizer)
-    prompt = "What is the capital of France?"
+    load_checkpoint("checkpoints/run-f9cda5bf4-checkpoint-999.pt", model=model, optimizer=optimizer)
+    prompt = "There once was a cat that loved cookies. "
 
-    output = decode(prompt, tokenizer, model, tokenizer.vocab, temp=0.8, max_tokens=256, p=0.9)
+
+    output = decode(prompt, tokenizer, model, tokenizer.vocab, temp=0.8, max_tokens=512, p=0.9)
     print(output)
 
 
