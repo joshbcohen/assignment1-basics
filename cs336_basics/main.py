@@ -1,9 +1,11 @@
 import argparse
 import os
+import time
 from uuid import uuid4
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
+import torch
 from tqdm import tqdm
 from transformer import TransformerLM
 from support import cross_entropy
@@ -14,6 +16,25 @@ import wandb
 logger = logging.getLogger(__name__)
 
 
+def evaluate_val_loss(val_dataset, model, loss_fn, args, num_batches=20):
+    model.eval()
+    total_loss = 0.0
+    with torch.no_grad():
+        for _ in range(num_batches):
+            inputs, targets = data_loading(
+                dataset=val_dataset,
+                batch_size=args.batch_size,
+                context_length=args.context_length,
+                device=args.device,
+            )
+            logits = model(inputs)
+            B, S, V = logits.shape
+            loss = loss_fn(logits.reshape(B * S, V), targets.reshape(B * S))
+            total_loss += loss.item()
+    model.train()
+    return total_loss / num_batches
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train transformer model.")
 
@@ -21,6 +42,7 @@ def main():
 
     # data loading
     parser.add_argument("dataset", type=str, help="Path to training dataset. Should be pre-tokenized")
+    parser.add_argument("--val-dataset", type=str, default=None, help="Path to validation dataset (optional)")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size.")
     parser.add_argument("--context_length", type=int, default=256, help="Context length of LM.")
 
@@ -43,13 +65,14 @@ def main():
     parser.add_argument("--eps", type=float, default=1e-6, help="Epsilon value for optimizer.")
 
     # learning rate schedulers
-    parser.add_argument("--a_max", type=float, default=1e-3, help="Maximum value for learning rate schedule.")
+    parser.add_argument("--a_max", type=float, default=3e-3, help="Maximum value for learning rate schedule.")
     parser.add_argument("--a_min", type=float, default=1e-4, help="Minimum value for learning rate schedule.")
-    parser.add_argument("--T_w", type=int, default=1000, help="Warm-up period for learning rate schedule.")
-    parser.add_argument("--T_c", type=int, default=10000, help="Cool-down period for learning rate schedule.")
+    parser.add_argument("--T_w", type=int, default=2000, help="Warm-up period for learning rate schedule.")
+    parser.add_argument("--T_c", type=int, default=20000, help="Cool-down period for learning rate schedule.")
 
     # training loop
     parser.add_argument("--iterations", type=int, default=1000, help="Number of training iterations")
+    parser.add_argument("--val-every", type=int, default=500, help="Evaluate validation loss every N steps")
 
     # save checkpoint args
     checkpoint_uuid = uuid4().hex[:9]
@@ -64,13 +87,7 @@ def main():
     args = parser.parse_args()
 
     dataset = np.load(args.dataset, mmap_mode="r")
-
-    training_loader = data_loading(
-        dataset=dataset,
-        batch_size=args.batch_size,
-        context_length=args.context_length,
-        device=args.device,
-    )
+    val_dataset = np.load(args.val_dataset, mmap_mode="r") if args.val_dataset else None
 
     model = TransformerLM(
         vocab_size=args.vocab_size,
@@ -96,29 +113,21 @@ def main():
     else:
         last_iteration = 0
 
-    return training_loader, optimizer, model, loss_fn, last_iteration, args
+    return dataset, val_dataset, optimizer, model, loss_fn, last_iteration, args
 
 
-def train_one_iteration(iteration, tb_writer, training_loader, optimizer, model, loss_fn, wandb_run, args):
-    running_loss = 0.0
-    last_loss = 0.0
+def train_one_iteration(iteration, tb_writer, dataset, optimizer, model, loss_fn, wandb_run, args, start_time):
+    inputs, targets = data_loading(
+        dataset=dataset,
+        batch_size=args.batch_size,
+        context_length=args.context_length,
+        device=args.device,
+    )
 
-    # Here, we use enumerate(training_loader) instead of
-    # iter(training_loader) so that we can track the batch
-    # index and do some intra-epoch reporting
-    # for i, data in enumerate(training_loader):
-    # Every data instance is an input + label pair
-    inputs, targets = training_loader
-
-    # Zero your gradients for every batch!
     optimizer.zero_grad()
 
-    # Make predictions for this batch
     logits = model(inputs)
 
-    # Compute the loss and its gradients
-    # support.cross_entropy expects logits of shape (batch, vocab) and targets of shape (batch,)
-    # the model returns (batch, seq, vocab) and targets are (batch, seq) — flatten the seq dim
     B, S, V = logits.shape
     loss = loss_fn(logits.reshape(B * S, V), targets.reshape(B * S))
     loss.backward()
@@ -127,12 +136,14 @@ def train_one_iteration(iteration, tb_writer, training_loader, optimizer, model,
     new_lr = get_learning_rate_schedule(t=iteration, a_max=args.a_max, a_min=args.a_min, T_w=args.T_w, T_c=args.T_c)
     for param_group in optimizer.param_groups:
         param_group["lr"] = new_lr
-    # Adjust learning weights
     optimizer.step()
 
-    # Gather data and report
-    running_loss += loss.item()
-    wandb_run.log({"loss": loss})
+    wallclock = time.time() - start_time
+    train_loss = loss.item()
+
+    wandb_run.log({"train/loss": train_loss, "train/lr": new_lr, "wallclock_time": wallclock}, step=iteration)
+    tb_writer.add_scalar("train/loss", train_loss, global_step=iteration, walltime=wallclock)
+    tb_writer.add_scalar("train/lr", new_lr, global_step=iteration, walltime=wallclock)
 
     if (iteration + 1) % args.save_every == 0:
         os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -143,14 +154,27 @@ def train_one_iteration(iteration, tb_writer, training_loader, optimizer, model,
             out=f"{args.checkpoint_dir}/{args.checkpoint_prefix}{iteration}.pt",
         )
 
-    return last_loss
+    return train_loss
 
 
 if __name__ == "__main__":
-    training_loader, optimizer, model, loss_fn, last_iteration, args = main()
+    dataset, val_dataset, optimizer, model, loss_fn, last_iteration, args = main()
     tb_writer = SummaryWriter()
-    wandb_run = wandb.init(project="mini-llm")
+    wandb_run = wandb.init(project="mini-llm", config=vars(args))
     wandb_run.watch(model)
 
+    start_time = time.time()
+
     for iteration in tqdm(range(last_iteration, args.iterations), desc="Iterations"):
-        train_one_iteration(iteration, tb_writer, training_loader, optimizer, model, loss_fn, wandb_run, args)
+        train_loss = train_one_iteration(
+            iteration, tb_writer, dataset, optimizer, model, loss_fn, wandb_run, args, start_time
+        )
+
+        if val_dataset is not None and (iteration + 1) % args.val_every == 0:
+            val_loss = evaluate_val_loss(val_dataset, model, loss_fn, args)
+            wallclock = time.time() - start_time
+            wandb_run.log({"val/loss": val_loss, "wallclock_time": wallclock}, step=iteration)
+            tb_writer.add_scalar("val/loss", val_loss, global_step=iteration, walltime=wallclock)
+            tqdm.write(f"step {iteration+1} | train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | t={wallclock:.1f}s")
+
+    tb_writer.close()
