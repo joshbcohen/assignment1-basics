@@ -74,15 +74,7 @@ class RMSNorm(torch.nn.Module):
         self.device = device
         self.dtype = dtype
 
-        self.g = torch.empty(self.d_model, dtype=self.dtype, device=self.device)
-        std = (2 / (self.d_model)) ** (0.5)
-        torch.nn.init.trunc_normal_(
-            tensor=self.g,
-            mean=0,
-            std=std,
-            a=-3 * std,
-            b=3 * std,
-        )
+        self.g = torch.ones(self.d_model, dtype=self.dtype, device=self.device)
         self.gain = torch.nn.Parameter(self.g)
 
     def _rms(self, x):
@@ -247,6 +239,16 @@ class MultiheadSelfAttention(torch.nn.Module):
         self.w_key = torch.empty(self.num_heads * self.d_k, self.d_model, device=device)
         self.w_value = torch.empty(self.num_heads * self.d_v, self.d_model, device=device)
         self.w_output = torch.empty(self.d_model, self.num_heads * self.d_v, device=device)
+
+        std = (1 / (self.d_model)) ** (0.5)
+        for w in [self.w_query, self.w_key, self.w_value, self.w_output]:
+            torch.nn.init.trunc_normal_(
+                    tensor=w,
+                    mean=0,
+                    std=std,  
+                    a=-3 * std,
+                    b=3 * std,
+            )
 
         self.W_Q = torch.nn.Parameter(self.w_query)
         self.W_K = torch.nn.Parameter(self.w_key)

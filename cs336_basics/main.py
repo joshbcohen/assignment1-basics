@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import time
 from uuid import uuid4
@@ -43,7 +44,7 @@ def main():
     # data loading
     parser.add_argument("dataset", type=str, help="Path to training dataset. Should be pre-tokenized")
     parser.add_argument("--val-dataset", type=str, default=None, help="Path to validation dataset (optional)")
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch size.")
+    parser.add_argument("--batch_size", type=int, default=128, help="Batch size.")
     parser.add_argument("--context_length", type=int, default=256, help="Context length of LM.")
 
     # optimizer
@@ -58,21 +59,21 @@ def main():
     parser.add_argument(
         "--d_ff", type=int, default=1344, help="Should usually be a multiple of 64, and around 3/8 * d_model."
     )
-    parser.add_argument("--theta", type=int, default=1000, help="Theta value for RoPE.")
+    parser.add_argument("--theta", type=int, default=10000, help="Theta value for RoPE.")
 
     # gradient_clipping
     parser.add_argument("--max_l2_norm", type=float, default=1.0, help="Maximum L2 norm for gradient clipping.")
     parser.add_argument("--eps", type=float, default=1e-6, help="Epsilon value for optimizer.")
 
     # learning rate schedulers
-    parser.add_argument("--a_max", type=float, default=3e-3, help="Maximum value for learning rate schedule.")
+    parser.add_argument("--a_max", type=float, default=1e-3, help="Maximum value for learning rate schedule.")
     parser.add_argument("--a_min", type=float, default=1e-4, help="Minimum value for learning rate schedule.")
-    parser.add_argument("--T_w", type=int, default=2000, help="Warm-up period for learning rate schedule.")
-    parser.add_argument("--T_c", type=int, default=20000, help="Cool-down period for learning rate schedule.")
+    parser.add_argument("--T_w", type=int, default=1000, help="Warm-up period for learning rate schedule.")
+    parser.add_argument("--T_c", type=int, default=10000, help="Cool-down period for learning rate schedule.")
 
     # training loop
-    parser.add_argument("--iterations", type=int, default=1000, help="Number of training iterations")
-    parser.add_argument("--val-every", type=int, default=500, help="Evaluate validation loss every N steps")
+    parser.add_argument("--iterations", type=int, default=10000, help="Number of training iterations")
+    parser.add_argument("--val-every", type=int, default=25, help="Evaluate validation loss every N steps")
 
     # save checkpoint args
     checkpoint_uuid = uuid4().hex[:9]
@@ -131,6 +132,7 @@ def train_one_iteration(iteration, tb_writer, dataset, optimizer, model, loss_fn
     B, S, V = logits.shape
     loss = loss_fn(logits.reshape(B * S, V), targets.reshape(B * S))
     loss.backward()
+    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
     apply_gradient_clipping(model.parameters(), max_l2_norm=args.max_l2_norm, eps=args.eps)
 
     new_lr = get_learning_rate_schedule(t=iteration, a_max=args.a_max, a_min=args.a_min, T_w=args.T_w, T_c=args.T_c)
@@ -141,9 +143,10 @@ def train_one_iteration(iteration, tb_writer, dataset, optimizer, model, loss_fn
     wallclock = time.time() - start_time
     train_loss = loss.item()
 
-    wandb_run.log({"train/loss": train_loss, "train/lr": new_lr, "wallclock_time": wallclock}, step=iteration)
+    wandb_run.log({"train/loss": train_loss, "train/lr": new_lr, "train/grad_norm": grad_norm.item(), "wallclock_time": wallclock}, step=iteration)
     tb_writer.add_scalar("train/loss", train_loss, global_step=iteration, walltime=wallclock)
     tb_writer.add_scalar("train/lr", new_lr, global_step=iteration, walltime=wallclock)
+    tb_writer.add_scalar("train/grad_norm", grad_norm.item(), global_step=iteration, walltime=wallclock)
 
     if (iteration + 1) % args.save_every == 0:
         os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -172,9 +175,11 @@ if __name__ == "__main__":
 
         if val_dataset is not None and (iteration + 1) % args.val_every == 0:
             val_loss = evaluate_val_loss(val_dataset, model, loss_fn, args)
+            val_perplexity = math.exp(val_loss)
             wallclock = time.time() - start_time
-            wandb_run.log({"val/loss": val_loss, "wallclock_time": wallclock}, step=iteration)
+            wandb_run.log({"val/loss": val_loss, "val/perplexity": val_perplexity, "wallclock_time": wallclock}, step=iteration)
             tb_writer.add_scalar("val/loss", val_loss, global_step=iteration, walltime=wallclock)
-            tqdm.write(f"step {iteration+1} | train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | t={wallclock:.1f}s")
+            tb_writer.add_scalar("val/perplexity", val_perplexity, global_step=iteration, walltime=wallclock)
+            tqdm.write(f"step {iteration+1} | train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | val_ppl={val_perplexity:.2f} | t={wallclock:.1f}s")
 
     tb_writer.close()
