@@ -12,9 +12,11 @@ def data_loading(
     dataset: npt.NDArray, batch_size: int, context_length: int, device: str
 ) -> tuple[Int[torch.Tensor, "batch_size context_length"]]:
     max_idx = len(dataset) - context_length - 1
-    starts = [random.randint(0, max_idx) for _ in range(batch_size)]
-    o1 = torch.tensor(np.array([dataset[s : s + context_length] for s in starts])).to(device=device)
-    o2 = torch.tensor(np.array([dataset[s + 1 : s + 1 + context_length] for s in starts])).to(device=device)
+    starts = np.random.randint(0, max_idx, size=batch_size)
+    offsets = np.arange(context_length)
+    indices = starts[:, None] + offsets[None, :]
+    o1 = torch.tensor(dataset[indices]).to(device=device)
+    o2 = torch.tensor(dataset[indices + 1]).to(device=device)
     return (o1, o2)
 
 

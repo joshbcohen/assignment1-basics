@@ -17,14 +17,14 @@ import wandb
 logger = logging.getLogger(__name__)
 
 
-def evaluate_val_loss(val_dataset, model, loss_fn, args, num_batches=20):
+def evaluate_val_loss(val_dataset, model, loss_fn, args, num_batches=20, val_batch_size=64):
     model.eval()
     total_loss = 0.0
     with torch.no_grad():
         for _ in range(num_batches):
             inputs, targets = data_loading(
                 dataset=val_dataset,
-                batch_size=args.batch_size,
+                batch_size=val_batch_size,
                 context_length=args.context_length,
                 device=args.device,
             )

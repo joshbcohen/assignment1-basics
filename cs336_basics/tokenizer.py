@@ -3,6 +3,7 @@ import ast
 
 import regex as re
 import numpy as np
+from tqdm import tqdm
 
 from cs336_basics.train_bpe import BYTE_CACHE, PAT_COMPILED
 
@@ -102,14 +103,19 @@ class Tokenizer:
 
 
 if __name__ == "__main__":
+    filepath = "../data/owt_train.txt"
+    print("Counting lines...")
+    with open(filepath, "r") as f:
+        total_lines = sum(1 for _ in f)
+    print(f"Total lines: {total_lines}")
     with (
-        open("../data/TinyStoriesV2-GPT4-valid.txt", "r") as in_f,
-        open("../data/TinyStoriesV2-GPT4-valid.npy", "wb") as out_f,
+        open(filepath, "r") as in_f,
+        open(filepath.replace(".txt", ".npy"), "wb") as out_f,
     ):
         ti = Tokenizer.from_files(
-            vocab_filepath="tinystories_10000_vocab.txt",
-            merges_filepath="tinystories_10000_merges.txt",
+            vocab_filepath="32000_owt_vocab.txt",
+            merges_filepath="32000_owt_merges.txt",
             special_tokens=["<|endoftext|>"],
         )
-        val = np.array(list(ti.encode_iterable(in_f)))
+        val = np.array(list(ti.encode_iterable(tqdm(in_f, total=total_lines, desc="Tokenizing"))))
         np.save(out_f, val)
